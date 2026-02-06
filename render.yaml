@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: aoe4-replay-backend
+    runtime: docker
+    dockerfilePath: ./Dockerfile.backend
+    plan: free
+    envVars:
+      - key: PORT
+        value: 3002
+      - key: PARSER_URL
+        value: http://localhost:5069
+      - key: DOWNLOAD_DIR
+        value: /shared/downloads
+      - key: CACHE_TTL_MS
+        value: 3600000
+    healthCheckPath: /health

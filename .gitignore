@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.env
+*.log
+cache/
+downloads/
+.DS_Store
+test_*.json
+replays-parser-src/

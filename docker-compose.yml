@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  parser:
+    build:
+      context: ./replays-parser
+      dockerfile: Dockerfile
+    ports:
+      - "5069:5069"
+    environment:
+      - ASPNETCORE_URLS=http://+:5069
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5069/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    volumes:
+      - replay-downloads:/shared/downloads
+
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    ports:
+      - "3002:3002"
+    environment:
+      - PARSER_URL=http://parser:5069
+      - SERVER_PORT=3002
+      - CACHE_TTL_MS=3600000
+      - DOWNLOAD_DIR=/shared/downloads
+    depends_on:
+      parser:
+        condition: service_healthy
+    volumes:
+      - replay-cache:/app/cache
+      - replay-downloads:/shared/downloads
+
+  client:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    ports:
+      - "3000:80"
+    depends_on:
+      - server
+
+volumes:
+  replay-cache:
+  replay-downloads:

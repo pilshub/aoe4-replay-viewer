@@ -1,0 +1,53 @@
+# === Stage 1: Build .NET Parser ===
+FROM mcr.microsoft.com/dotnet/sdk:8.0 AS parser-build
+WORKDIR /src
+RUN apt-get update && apt-get install -y git && \
+    git clone https://github.com/aoe4world/replays-api.git .
+RUN dotnet restore
+RUN dotnet publish -c Release -o /app/parser
+
+# === Stage 2: Build Node.js Server ===
+FROM node:20-alpine AS server-build
+WORKDIR /app
+COPY server/package.json server/package-lock.json ./
+RUN npm ci
+COPY server/tsconfig.json ./
+COPY server/src/ ./src/
+RUN npx tsc
+
+# === Stage 3: Runtime (both services in one container) ===
+FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
+
+# Install Node.js 20
+RUN apt-get update && apt-get install -y curl && \
+    curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
+    apt-get install -y nodejs && \
+    rm -rf /var/lib/apt/lists/*
+
+# Copy parser
+WORKDIR /app/parser
+COPY --from=parser-build /app/parser .
+
+# Copy server
+WORKDIR /app/server
+COPY server/package.json server/package-lock.json ./
+RUN npm ci --omit=dev
+COPY --from=server-build /app/dist ./dist
+
+# Create shared directories
+RUN mkdir -p /shared/downloads /app/server/cache
+
+# Copy startup script
+COPY start-backend.sh /app/start-backend.sh
+RUN chmod +x /app/start-backend.sh
+
+WORKDIR /app
+ENV ASPNETCORE_URLS=http://+:5069
+ENV PARSER_URL=http://localhost:5069
+ENV SERVER_PORT=3002
+ENV DOWNLOAD_DIR=/shared/downloads
+ENV CACHE_TTL_MS=3600000
+
+EXPOSE 3002
+
+CMD ["/app/start-backend.sh"]
