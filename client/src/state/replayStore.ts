@@ -53,7 +53,7 @@ export const useReplayStore = create<ReplayState>((set, get) => ({
     try {
       const { replayId, metadata } = await loadReplay(url);
       const data = await fetchReplayData(replayId);
-      set({ replayId, metadata, data, loading: false });
+      set({ replayId, metadata, data, loading: false, playing: true, currentTime: 30 });
     } catch (err: any) {
       set({ loading: false, error: err.message });
     }

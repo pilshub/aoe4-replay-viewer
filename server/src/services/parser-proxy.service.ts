@@ -1,8 +1,7 @@
 import fs from 'fs';
 import path from 'path';
-import crypto from 'crypto';
+import { parseReplayBuffer, ParsedReplay } from './replay-parser';
 
-const PARSER_URL = process.env.PARSER_URL || 'http://localhost:5069';
 const DOWNLOAD_DIR = process.env.DOWNLOAD_DIR || path.join(__dirname, '../../downloads');
 
 // Ensure download directory exists
@@ -10,127 +9,141 @@ if (!fs.existsSync(DOWNLOAD_DIR)) {
   fs.mkdirSync(DOWNLOAD_DIR, { recursive: true });
 }
 
-export interface ParserResponse {
-  players: ParserPlayer[];
-  duration?: number;
-  mapName?: string;
-}
-
-export interface ParserPlayer {
-  playerId: number;
-  playerName: string;
-  playerColor: number;
-  civ: string;
-  outcome: string;
-  entities: ParserEntity[];
-  resourceTimelines?: any;
-  scoreTimelines?: any;
-  ageTimestamps?: any;
-}
-
-export interface ParserEntity {
-  Id: number;
-  EntityType: string;
-  Category?: number;
-  SpawnX: number;
-  SpawnY: number;
-  SpawnTimestamp: number;
-  DeathX?: number;
-  DeathY?: number;
-  DeathTimestamp?: number;
-  KillerX?: number;
-  KillerY?: number;
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
+/**
+ * Extract game ID from an aoe4world.com or aoe4replays.gg URL.
+ */
+function extractGameId(url: string): string | null {
+  const match = url.match(/\/games\/(\d+)/) || url.match(/\/replays\/(\d+)/);
+  return match ? match[1] : null;
 }
 
 /**
- * Download the replay file ourselves, then pass the local path to the parser.
- * This avoids rate limiting issues since we control the download with proper headers.
+ * Extract player path from aoe4world URL for summary.json.
  */
-async function downloadAndParse(replayUrl: string): Promise<any> {
-  const hash = crypto.createHash('md5').update(replayUrl).digest('hex');
-  const localPath = path.join(DOWNLOAD_DIR, `${hash}.gz`);
+function extractAoe4WorldParts(url: string): { playerPath: string; gameId: string; sig: string } | null {
+  const parsed = new URL(url);
+  const match = parsed.pathname.match(/\/players\/([^/]+)\/games\/(\d+)/);
+  if (!match) return null;
+  return {
+    playerPath: match[1],
+    gameId: match[2],
+    sig: parsed.searchParams.get('sig') || '',
+  };
+}
 
-  // Download the file ourselves with a browser-like User-Agent
-  if (!fs.existsSync(localPath)) {
-    console.log(`[parser-proxy] Downloading replay from ${replayUrl}...`);
+/**
+ * Download the replay .gz file from aoe4replays.gg.
+ */
+async function downloadReplay(gameId: string): Promise<Buffer> {
+  const localPath = path.join(DOWNLOAD_DIR, `${gameId}.gz`);
 
-    const maxRetries = 3;
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
-      if (attempt > 0) {
-        const delay = attempt * 20_000;
-        console.log(`[parser-proxy] Download rate limited, waiting ${delay / 1000}s (attempt ${attempt + 1})...`);
-        await sleep(delay);
-      }
-
-      const dlResponse = await fetch(replayUrl, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Accept': '*/*',
-        },
-        signal: AbortSignal.timeout(60_000),
-      });
-
-      if (dlResponse.status === 429 && attempt < maxRetries) {
-        continue;
-      }
-
-      if (!dlResponse.ok) {
-        throw new Error(`Failed to download replay: HTTP ${dlResponse.status}`);
-      }
-
-      const buffer = Buffer.from(await dlResponse.arrayBuffer());
-      fs.writeFileSync(localPath, buffer);
-      console.log(`[parser-proxy] Downloaded ${buffer.length} bytes to ${localPath}`);
-      break;
-    }
-  } else {
-    console.log(`[parser-proxy] Using cached download: ${localPath}`);
+  if (fs.existsSync(localPath)) {
+    console.log(`[parser-proxy] Using cached replay: ${localPath}`);
+    return fs.readFileSync(localPath);
   }
 
-  // Pass local file to parser's newfile endpoint
-  const endpoint = `${PARSER_URL}/Summary/newfile?path=${encodeURIComponent(localPath)}`;
-  console.log(`[parser-proxy] Parsing local file via ${endpoint}`);
+  const downloadUrl = `https://aoe4replays.gg/api/replays/${gameId}`;
+  console.log(`[parser-proxy] Downloading replay from ${downloadUrl}...`);
 
-  const response = await fetch(endpoint, {
-    signal: AbortSignal.timeout(120_000),
+  const response = await fetch(downloadUrl, {
+    signal: AbortSignal.timeout(60_000),
   });
 
   if (!response.ok) {
-    const text = await response.text().catch(() => '');
-    // If parse fails, delete the cached file so it can be retried
-    fs.unlinkSync(localPath);
-    throw new Error(`Parser returned ${response.status}: ${text}`);
+    throw new Error(`Failed to download replay: HTTP ${response.status}`);
   }
 
-  return response.json();
+  const buffer = Buffer.from(await response.arrayBuffer());
+  fs.writeFileSync(localPath, buffer);
+  console.log(`[parser-proxy] Downloaded ${buffer.length} bytes`);
+  return buffer;
 }
 
 /**
- * Try the direct parser endpoint first; fall back to download-and-parse on rate limit.
+ * Fetch metadata (player names, civs, map, etc.) from aoe4world summary.json.
+ */
+async function fetchMetadata(url: string): Promise<any | null> {
+  const parts = extractAoe4WorldParts(url);
+  if (!parts) return null;
+
+  const summaryUrl = `https://aoe4world.com/players/${parts.playerPath}/games/${parts.gameId}/summary.json${parts.sig ? `?sig=${parts.sig}` : ''}`;
+  console.log(`[parser-proxy] Fetching metadata from summary.json...`);
+
+  try {
+    const response = await fetch(summaryUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept': 'application/json',
+      },
+      signal: AbortSignal.timeout(15_000),
+    });
+
+    if (!response.ok) {
+      console.log(`[parser-proxy] summary.json returned ${response.status}, using fallback metadata`);
+      return null;
+    }
+
+    return await response.json();
+  } catch (err: any) {
+    console.log(`[parser-proxy] Failed to fetch metadata: ${err.message}`);
+    return null;
+  }
+}
+
+/**
+ * Enrich parsed replay with metadata from aoe4world.
+ */
+function enrichWithMetadata(parsed: ParsedReplay, metadata: any): ParsedReplay {
+  if (!metadata) return parsed;
+
+  // Map name
+  if (metadata.map_name) {
+    parsed.gameSummary.mapName = metadata.map_name;
+  }
+
+  // Duration from metadata (more accurate)
+  if (metadata.duration) {
+    parsed.gameSummary.duration = metadata.duration;
+    parsed.replaySummary.dataSTLS.gameLength = metadata.duration;
+  }
+
+  // Player info
+  const metaPlayers = metadata.players || [];
+  for (let i = 0; i < parsed.gameSummary.players.length && i < metaPlayers.length; i++) {
+    const mp = metaPlayers[i];
+    const pp = parsed.gameSummary.players[i];
+    pp.playerName = mp.name || pp.playerName;
+    pp.civ = mp.civilization || pp.civ;
+    pp.outcome = mp.result || pp.outcome;
+    pp.playerColor = i;
+  }
+
+  return parsed;
+}
+
+/**
+ * Parse a replay from an aoe4world.com URL.
  */
 export async function parseReplay(replayUrl: string): Promise<any> {
-  const endpoint = `${PARSER_URL}/Summary/new?url=${encodeURIComponent(replayUrl)}`;
-  console.log(`[parser-proxy] GET ${endpoint}`);
-
-  const response = await fetch(endpoint, {
-    signal: AbortSignal.timeout(120_000),
-  });
-
-  if (response.ok) {
-    return response.json();
+  const gameId = extractGameId(replayUrl);
+  if (!gameId) {
+    throw new Error(`Cannot extract game ID from URL: ${replayUrl}`);
   }
 
-  const text = await response.text().catch(() => '');
-  const isRateLimit = response.status === 429 || text.includes('429');
+  console.log(`[parser-proxy] Game ID: ${gameId}`);
 
-  if (isRateLimit) {
-    console.log(`[parser-proxy] Rate limited on direct call, switching to download-and-parse...`);
-    return downloadAndParse(replayUrl);
-  }
+  // Download replay and fetch metadata in parallel
+  const [replayBuffer, metadata] = await Promise.all([
+    downloadReplay(gameId),
+    fetchMetadata(replayUrl),
+  ]);
 
-  throw new Error(`Parser returned ${response.status}: ${text}`);
+  // Parse the replay binary
+  const parsed = parseReplayBuffer(replayBuffer);
+
+  // Enrich with metadata (player names, civs, map)
+  const enriched = enrichWithMetadata(parsed, metadata);
+
+  console.log(`[parser-proxy] Done: ${enriched.gameSummary.players.length} players, map=${enriched.gameSummary.mapName}`);
+  return enriched;
 }

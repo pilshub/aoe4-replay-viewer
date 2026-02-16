@@ -1,8 +1,87 @@
+// ── Resource types ────────────────────────────────────────
+
+export interface ResourceCosts {
+  food: number;
+  wood: number;
+  stone: number;
+  gold: number;
+  total: number;
+  popcap: number;
+  time: number;
+}
+
+// ── Build Order ──────────────────────────────────────────
+
+export interface BuildOrderEntry {
+  time: number;
+  playerId: number;
+  eventType: 'construct' | 'build_unit' | 'upgrade';
+  name: string;
+  icon: string;
+  displayClass: string;
+  costs: ResourceCosts | null;
+  age: number;
+  baseId: string;
+  isAgeUp: boolean;
+  targetAge: number;
+  classes: string[];
+}
+
+// ── Strategy Analysis ────────────────────────────────────
+
+export type StrategyType =
+  | 'Feudal Rush'
+  | 'Fast Castle'
+  | 'Economic Boom'
+  | 'Tower Rush'
+  | 'All-in'
+  | 'Standard';
+
+export interface AgeUpTiming {
+  age: number;
+  ageName: string;
+  time: number;
+  landmarkName?: string;
+  landmarkIcon?: string;
+}
+
+export interface PlayerAnalysis {
+  playerId: number;
+  strategy: StrategyType;
+  strategyConfidence: number;
+  strategyReasons: string[];
+  ageUpTimings: AgeUpTiming[];
+  currentAge: number;
+  firstMilitaryUnit: { time: number; name: string; icon: string } | null;
+  firstMilitaryBuilding: { time: number; name: string; icon: string } | null;
+  unitComposition: Array<{ name: string; icon: string; count: number; baseId: string; displayClass: string }>;
+  buildingBreakdown: Array<{ name: string; icon: string; count: number; baseId: string }>;
+  resourceSpending: {
+    food: number;
+    wood: number;
+    stone: number;
+    gold: number;
+    total: number;
+    byCategory: { military: number; economic: number; technology: number; buildings: number };
+  };
+  townCenterCount: number;
+  militaryBuildingCount: number;
+  totalMilitaryUnits: number;
+}
+
+export interface MatchAnalysis {
+  players: PlayerAnalysis[];
+}
+
+// ── Timeline Data ────────────────────────────────────────
+
 export interface TimelineData {
   metadata: ReplayMetadata;
   entities: OptimizedEntity[];
   events: DeathEvent[];
   timeline: Keyframe[];
+  buildOrder: BuildOrderEntry[];
+  analysis: MatchAnalysis;
 }
 
 export interface ReplayMetadata {
@@ -31,6 +110,7 @@ export interface OptimizedEntity {
   deathX: number | null;
   deathY: number | null;
   killerId: number | null;
+  unitCount: number;
 }
 
 export interface DeathEvent {

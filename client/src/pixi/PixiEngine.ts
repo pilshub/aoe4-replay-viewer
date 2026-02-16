@@ -122,6 +122,10 @@ export class PixiEngine {
     this.data = data;
   }
 
+  hasData(): boolean {
+    return this.data !== null;
+  }
+
   setTime(time: number): void {
     this.currentTime = time;
   }

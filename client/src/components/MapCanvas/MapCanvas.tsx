@@ -1,4 +1,4 @@
-import { useRef, useEffect, useCallback } from 'react';
+import { useRef, useEffect } from 'react';
 import { PixiEngine } from '../../pixi/PixiEngine';
 import { useReplayStore } from '../../state/replayStore';
 
@@ -8,78 +8,65 @@ interface MapCanvasProps {
 
 export function MapCanvas({ engineRef }: MapCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const { data, currentTime, playing, speed, layers, setCurrentTime } = useReplayStore();
   const lastFrameTime = useRef<number>(0);
 
-  // Initialize PixiJS engine
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const parent = canvas.parentElement!;
-    const width = parent.clientWidth;
-    const height = parent.clientHeight;
-
-    const engine = new PixiEngine(canvas, width, height);
-    engineRef.current = engine;
-
-    // Handle resize
-    const handleResize = () => {
-      const w = parent.clientWidth;
-      const h = parent.clientHeight;
-      engine.resize(w, h);
-    };
-    const observer = new ResizeObserver(handleResize);
-    observer.observe(parent);
-
-    return () => {
-      observer.disconnect();
-      engine.destroy();
-      engineRef.current = null;
-    };
-  }, []);
-
-  // Load data into engine when available
-  useEffect(() => {
-    if (data && engineRef.current) {
-      engineRef.current.loadData(data);
-      engineRef.current.setTime(0);
-      engineRef.current.render();
-    }
-  }, [data]);
-
-  // Update layer visibility
-  useEffect(() => {
-    const engine = engineRef.current;
-    if (!engine) return;
-    engine.setLayerVisibility('buildings', layers.buildings);
-    engine.setLayerVisibility('units', layers.units);
-    engine.setLayerVisibility('effects', layers.effects);
-    engine.setLayerVisibility('heatmap', layers.heatmap);
-    engine.render();
-  }, [layers]);
-
-  // Animation loop
-  useEffect(() => {
-    const engine = engineRef.current;
-    if (!engine || !data) return;
-
+    let engine: PixiEngine | null = null;
+    let observer: ResizeObserver | null = null;
     let animFrame: number;
+    let destroyed = false;
 
     const tick = (timestamp: number) => {
-      if (playing) {
-        const delta = lastFrameTime.current ? (timestamp - lastFrameTime.current) / 1000 : 0;
-        const newTime = Math.min(
-          data.metadata.duration,
-          currentTime + delta * speed
-        );
+      if (destroyed) return;
 
-        if (newTime >= data.metadata.duration) {
-          // Reached end
-          useReplayStore.getState().togglePlay();
-          setCurrentTime(data.metadata.duration);
+      const parent = canvas.parentElement!;
+
+      // Wait for valid dimensions before creating engine
+      if (!engine) {
+        const w = parent.clientWidth;
+        const h = parent.clientHeight;
+        if (w > 100 && h > 100) {
+          engine = new PixiEngine(canvas, w, h);
+          engineRef.current = engine;
+
+          observer = new ResizeObserver(() => {
+            const rw = parent.clientWidth;
+            const rh = parent.clientHeight;
+            if (rw > 0 && rh > 0 && engine) engine.resize(rw, rh);
+          });
+          observer.observe(parent);
         } else {
-          setCurrentTime(newTime);
+          // Not ready yet, keep polling
+          animFrame = requestAnimationFrame(tick);
+          return;
+        }
+      }
+
+      const s = useReplayStore.getState();
+
+      // Load data when available
+      if (s.data && !engine.hasData()) {
+        engine.loadData(s.data);
+      }
+
+      // Update layer visibility
+      engine.setLayerVisibility('buildings', s.layers.buildings);
+      engine.setLayerVisibility('units', s.layers.units);
+      engine.setLayerVisibility('effects', s.layers.effects);
+      engine.setLayerVisibility('heatmap', s.layers.heatmap);
+
+      // Advance time if playing
+      if (s.playing && s.data) {
+        const delta = lastFrameTime.current ? (timestamp - lastFrameTime.current) / 1000 : 0;
+        const newTime = Math.min(s.data.metadata.duration, s.currentTime + delta * s.speed);
+        if (newTime >= s.data.metadata.duration) {
+          useReplayStore.getState().togglePlay();
+          useReplayStore.getState().setCurrentTime(s.data.metadata.duration);
+        } else {
+          useReplayStore.getState().setCurrentTime(newTime);
         }
       }
       lastFrameTime.current = timestamp;
@@ -91,8 +78,15 @@ export function MapCanvas({ engineRef }: MapCanvasProps) {
     };
 
     animFrame = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(animFrame);
-  }, [data, playing, speed]);
+
+    return () => {
+      destroyed = true;
+      cancelAnimationFrame(animFrame);
+      if (observer) observer.disconnect();
+      if (engine) engine.destroy();
+      engineRef.current = null;
+    };
+  }, []);
 
   return (
     <div className="w-full h-full relative">

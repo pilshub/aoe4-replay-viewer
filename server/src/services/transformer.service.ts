@@ -1,7 +1,24 @@
 import { computeBounds, normalize } from '../utils/coordinate-normalizer';
 import { classifyEntity, EntityCategory } from '../utils/entity-classifier';
+import { analyzeMatch, MatchAnalysis } from './strategy-analyzer';
+import type { ResourceCosts } from '../data/aoe4-data';
 
 // ── Output types ──────────────────────────────────────────────
+
+export interface BuildOrderEntry {
+  time: number;
+  playerId: number;
+  eventType: 'construct' | 'build_unit' | 'upgrade';
+  name: string;
+  icon: string;
+  displayClass: string;
+  costs: ResourceCosts | null;
+  age: number;
+  baseId: string;
+  isAgeUp: boolean;
+  targetAge: number;
+  classes: string[];
+}
 
 export interface TimelineData {
   metadata: {
@@ -12,6 +29,8 @@ export interface TimelineData {
   entities: OptimizedEntity[];
   events: DeathEvent[];
   timeline: Keyframe[];
+  buildOrder: BuildOrderEntry[];
+  analysis: MatchAnalysis;
 }
 
 export interface PlayerInfo {
@@ -34,6 +53,7 @@ export interface OptimizedEntity {
   deathX: number | null;
   deathY: number | null;
   killerId: number | null;
+  unitCount: number;
 }
 
 export interface DeathEvent {
@@ -55,11 +75,9 @@ export interface Keyframe {
 // ── Transformer ───────────────────────────────────────────────
 
 export function transformReplayData(raw: any): TimelineData {
-  // The parser returns { gameSummary: { players: [...] }, replaySummary: { ... } }
   const players: PlayerInfo[] = [];
   const allRawEntities: Array<any & { _playerId: number }> = [];
 
-  // Unwrap gameSummary if present
   const summary = raw.gameSummary ?? raw;
   const rawPlayers = summary.players ?? summary.Players ?? [];
 
@@ -73,7 +91,6 @@ export function transformReplayData(raw: any): TimelineData {
       outcome: p.outcome ?? p.Outcome ?? 'unknown',
     });
 
-    // Parser returns units[] + startingUnits[], not entities[]
     const units = p.units ?? p.Units ?? [];
     const startingUnits = p.startingUnits ?? p.StartingUnits ?? [];
     const entities = p.entities ?? p.Entities ?? [...startingUnits, ...units];
@@ -82,7 +99,6 @@ export function transformReplayData(raw: any): TimelineData {
     }
   }
 
-  // Compute map duration (may be in replaySummary.dataSTLS.gameLength)
   const replaySummary = raw.replaySummary ?? {};
   const dataSTLS = replaySummary.dataSTLS ?? {};
   let duration = summary.duration ?? summary.Duration ?? dataSTLS.gameLength ?? 0;
@@ -95,7 +111,6 @@ export function transformReplayData(raw: any): TimelineData {
     }
   }
 
-  // Compute bounds from all coordinates
   const bounds = computeBounds(
     allRawEntities.map(e => ({
       SpawnX: e.SpawnX ?? e.spawnX,
@@ -105,7 +120,6 @@ export function transformReplayData(raw: any): TimelineData {
     }))
   );
 
-  // Transform entities
   const entities: OptimizedEntity[] = [];
   const events: DeathEvent[] = [];
 
@@ -132,11 +146,11 @@ export function transformReplayData(raw: any): TimelineData {
       deathX: deathX != null ? normalize(deathX, bounds.minX, bounds.maxX) : null,
       deathY: deathY != null ? normalize(deathY, bounds.minY, bounds.maxY) : null,
       killerId: e.KillerId ?? e.killerId ?? null,
+      unitCount: e.unitCount ?? e.UnitCount ?? 1,
     };
 
     entities.push(normalized);
 
-    // Create death event
     if (deathTime != null && deathX != null && deathY != null) {
       events.push({
         entityId: id,
@@ -149,19 +163,15 @@ export function transformReplayData(raw: any): TimelineData {
     }
   }
 
-  // Sort entities by spawn time
   entities.sort((a, b) => a.spawnTime - b.spawnTime);
-  // Sort events by time
   events.sort((a, b) => a.time - b.time);
 
-  // Generate keyframes every 10 seconds
   const timeline: Keyframe[] = [];
   const step = 10;
   for (let t = 0; t <= duration; t += step) {
     let entityCount = 0;
     let buildingCount = 0;
     let unitCount = 0;
-
     for (const e of entities) {
       if (e.spawnTime <= t && (e.deathTime == null || e.deathTime > t)) {
         entityCount++;
@@ -169,9 +179,37 @@ export function transformReplayData(raw: any): TimelineData {
         else unitCount++;
       }
     }
-
     timeline.push({ time: t, entityCount, buildingCount, unitCount });
   }
+
+  // Transform build order events with enriched data
+  const rawBuildOrder = raw.buildOrderEvents ?? [];
+
+  // Determine PLAS ID → sequential ID mapping
+  const plasIds = rawBuildOrder.map((e: any) => e.playerId);
+  const uniquePlasIds = [...new Set(plasIds)].sort() as number[];
+
+  const buildOrder: BuildOrderEntry[] = rawBuildOrder.map((e: any) => {
+    const idx = uniquePlasIds.indexOf(e.playerId);
+    return {
+      time: e.time,
+      playerId: idx >= 0 ? idx : e.playerId,
+      eventType: e.eventType,
+      name: e.name,
+      icon: e.icon,
+      displayClass: e.displayClass ?? '',
+      costs: e.costs ?? null,
+      age: e.age ?? 1,
+      baseId: e.baseId ?? '',
+      isAgeUp: e.isAgeUp ?? false,
+      targetAge: e.targetAge ?? 0,
+      classes: e.classes ?? [],
+    };
+  });
+
+  // Run strategy analysis
+  const playerIds = players.map(p => p.playerId);
+  const analysis = analyzeMatch(buildOrder, playerIds);
 
   return {
     metadata: {
@@ -182,5 +220,7 @@ export function transformReplayData(raw: any): TimelineData {
     entities,
     events,
     timeline,
+    buildOrder,
+    analysis,
   };
 }

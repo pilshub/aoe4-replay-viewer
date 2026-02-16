@@ -82,6 +82,29 @@ export function Sidebar() {
         })}
       </div>
 
+      {/* Legend */}
+      <div className="px-4 py-3 border-t border-aoe-border">
+        <h3 className="text-gray-400 text-xs font-semibold mb-2">Legend</h3>
+        <div className="space-y-1.5 text-xs text-gray-400">
+          <div className="flex items-center gap-2">
+            <svg width="14" height="14" viewBox="0 0 14 14"><polygon points="7,1 13,7 7,13 1,7" fill="#888" stroke="#fff" strokeWidth="1"/></svg>
+            <span>Building</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <svg width="14" height="14" viewBox="0 0 14 14"><circle cx="7" cy="7" r="4" fill="#888" fillOpacity="0.7" stroke="#bbb" strokeWidth="1.5"/></svg>
+            <span>Army (size = units)</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <svg width="14" height="14" viewBox="0 0 14 14"><circle cx="7" cy="7" r="5" fill="#888" fillOpacity="0.5" stroke="#bbb" strokeWidth="1.5"/><line x1="4" y1="4" x2="10" y2="10" stroke="#fff" strokeWidth="1.5"/><line x1="10" y1="4" x2="4" y2="10" stroke="#fff" strokeWidth="1.5"/></svg>
+            <span>Combat</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <svg width="14" height="14" viewBox="0 0 14 14"><circle cx="7" cy="7" r="4" fill="none" stroke="#f88" strokeWidth="2" opacity="0.8"/></svg>
+            <span>Death effect</span>
+          </div>
+        </div>
+      </div>
+
       {/* Entity counts summary */}
       <div className="px-4 py-3 border-t border-aoe-border bg-aoe-bg/50">
         <div className="text-xs text-gray-500">
