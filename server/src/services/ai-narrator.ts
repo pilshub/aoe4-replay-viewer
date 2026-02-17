@@ -231,10 +231,22 @@ function buildIconMap(
     }
   }
 
-  // From player analyses: unitComposition
+  // From age phases: landmarks
+  for (const phase of report.agePhases) {
+    if (phase.landmark && phase.landmarkIcon) {
+      map.set(phase.landmark, phase.landmarkIcon);
+    }
+  }
+
+  // From player analyses: unitComposition + age-up landmarks
   for (const pa of playerAnalyses) {
     for (const u of pa.unitComposition) {
       if (u.icon && u.name) map.set(u.name, u.icon);
+    }
+    for (const a of pa.ageUpTimings) {
+      if (a.landmarkName && a.landmarkIcon) {
+        map.set(a.landmarkName, a.landmarkIcon);
+      }
     }
   }
 
@@ -259,7 +271,7 @@ function generateVariants(name: string): string[] {
 
 /**
  * Replace known unit/building/tech names in narrative text with {{icon:url|Name}} tokens.
- * Replaces every occurrence to make the narrative consistently enriched with icons.
+ * Uses a safe two-pass approach: first protect existing tokens, then inject, then restore.
  */
 function injectIcons(text: string, iconMap: Map<string, string>): string {
   if (iconMap.size === 0) return text;
@@ -275,21 +287,45 @@ function injectIcons(text: string, iconMap: Map<string, string>): string {
   // Sort by name length (longest first) to avoid partial matches
   expandedEntries.sort((a, b) => b[0].length - a[0].length);
 
+  // Split text into segments: "safe to replace" vs "inside markdown/urls"
+  // We'll work on a simple approach: do replacements, then verify no nesting
   const replaced = new Set<string>();
 
   for (const [name, icon] of expandedEntries) {
-    // Skip if a longer form already replaced this
     const lowerName = name.toLowerCase();
     if (replaced.has(lowerName)) continue;
 
     const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    // Match whole word, case-insensitive, not already inside an icon token
-    const regex = new RegExp(`(?<!\\{\\{icon:[^}]*\\|)\\b(${escaped})\\b`, 'i');
-    const match = text.match(regex);
-    if (match) {
-      text = text.replace(regex, `{{icon:${icon}|${match[1]}}}`);
-      replaced.add(lowerName);
+    const regex = new RegExp(`\\b(${escaped})\\b`, 'ig');
+
+    // Find all matches and only replace ones NOT inside an existing {{icon:...}} token
+    let match: RegExpExecArray | null;
+    let didReplace = false;
+    const tokenRanges: Array<[number, number]> = [];
+
+    // Find all existing token ranges
+    const tokenRegex = /\{\{icon:[^}]*\}\}/g;
+    let tokenMatch: RegExpExecArray | null;
+    while ((tokenMatch = tokenRegex.exec(text)) !== null) {
+      tokenRanges.push([tokenMatch.index, tokenMatch.index + tokenMatch[0].length]);
     }
+
+    // Find first match not inside an existing token
+    while ((match = regex.exec(text)) !== null) {
+      const pos = match.index;
+      const inside = tokenRanges.some(([start, end]) => pos >= start && pos < end);
+      if (!inside) {
+        // Replace this occurrence
+        const before = text.slice(0, pos);
+        const after = text.slice(pos + match[0].length);
+        const replacement = `{{icon:${icon}|${match[1]}}}`;
+        text = before + replacement + after;
+        didReplace = true;
+        break; // Only replace first occurrence per name
+      }
+    }
+
+    if (didReplace) replaced.add(lowerName);
   }
 
   return text;
