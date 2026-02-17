@@ -6,6 +6,7 @@ import {
   COUNTER_UNIT_MATRIX, TIMING_BENCHMARKS, STRATEGY_PATTERNS,
   ANALYSIS_GUIDELINES, getCivKnowledge,
 } from '../data/aoe4-meta';
+import { getGlobalIconMap } from '../data/aoe4-data';
 
 const AGE_NAMES_NARRATOR = ['', 'Dark Age', 'Feudal Age', 'Castle Age', 'Imperial Age'];
 
@@ -210,15 +211,18 @@ const LANGUAGE_NAMES: Record<string, string> = {
 };
 
 /**
- * Build a map of entity names → icon URLs from match data.
+ * Build a comprehensive map of entity names → icon URLs.
+ * Starts with the global map (ALL game entities), then overrides with match-specific data.
  */
 function buildIconMap(
   report: MatchAnalysisReport,
   playerAnalyses: PlayerAnalysis[],
 ): Map<string, string> {
-  const map = new Map<string, string>();
+  // Start with global icon map (all 955+ entities from game data)
+  const globalMap = getGlobalIconMap();
+  const map = new Map<string, string>(globalMap);
 
-  // From age phases: keyUnits, keyBuildings, keyTechs
+  // Override with match-specific data (more accurate icons for this specific match)
   for (const phase of report.agePhases) {
     for (const u of phase.keyUnits) {
       if (u.icon && u.name) map.set(u.name, u.icon);
@@ -229,16 +233,11 @@ function buildIconMap(
     for (const t of phase.keyTechs) {
       if (t.icon && t.name) map.set(t.name, t.icon);
     }
-  }
-
-  // From age phases: landmarks
-  for (const phase of report.agePhases) {
     if (phase.landmark && phase.landmarkIcon) {
       map.set(phase.landmark, phase.landmarkIcon);
     }
   }
 
-  // From player analyses: unitComposition + age-up landmarks
   for (const pa of playerAnalyses) {
     for (const u of pa.unitComposition) {
       if (u.icon && u.name) map.set(u.name, u.icon);

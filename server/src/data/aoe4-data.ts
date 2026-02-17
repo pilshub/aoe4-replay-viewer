@@ -113,6 +113,33 @@ export function getPbgidSets(): {
   return { buildings, units, technologies };
 }
 
+// ── Global Name → Icon map (for narrative icon injection) ─
+
+let _globalIconMap: Map<string, string> | null = null;
+
+/**
+ * Get a map of ALL known entity names → icon URLs from the game data.
+ * Prefers shorter/simpler names when duplicates exist (e.g. "Archer" over "Veteran Archer").
+ * Lazy-loaded and cached.
+ */
+export function getGlobalIconMap(): Map<string, string> {
+  if (_globalIconMap) return _globalIconMap;
+
+  _globalIconMap = new Map();
+  const lookup = getAoe4Lookup();
+
+  for (const entry of lookup.values()) {
+    if (!entry.icon || !entry.name) continue;
+    // Only set if not already present (first entry wins, which is usually the base version)
+    if (!_globalIconMap.has(entry.name)) {
+      _globalIconMap.set(entry.name, entry.icon);
+    }
+  }
+
+  console.log(`[aoe4-data] Global icon map: ${_globalIconMap.size} unique names`);
+  return _globalIconMap;
+}
+
 // ── Classification helpers ────────────────────────────────
 
 export function isAgeUpEvent(entry: Aoe4Entry): { isAgeUp: boolean; targetAge: number } {
