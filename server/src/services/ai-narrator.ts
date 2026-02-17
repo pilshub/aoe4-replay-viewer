@@ -85,6 +85,9 @@ function buildPrompt(
         if (phase.keyUnits.length > 0) {
           lines.push(`    Key units: ${phase.keyUnits.map(u => `${u.count}x ${u.name}`).join(', ')}`);
         }
+        if (phase.keyBuildings.length > 0) {
+          lines.push(`    Key buildings: ${phase.keyBuildings.map(b => `${b.count}x ${b.name}`).join(', ')}`);
+        }
         if (phase.keyTechs.length > 0) {
           lines.push(`    Techs: ${phase.keyTechs.map(t => t.name).join(', ')}`);
         }
@@ -151,33 +154,37 @@ function buildSystemPrompt(players: PlayerInfo[], language: string, maxAgeReache
 
   // Build age sections dynamically based on actual data
   const ageSections: string[] = [];
-  ageSections.push('1. **Dark Age** (0:00 to Feudal) - Opening build, villager count, strategy signals');
-  if (maxAgeReached >= 2) ageSections.push('2. **Feudal Age** - Military choices, first engagements, economic balance');
-  if (maxAgeReached >= 3) ageSections.push('3. **Castle Age** - Power spikes, key tech/unit choices, major battles');
-  if (maxAgeReached >= 4) ageSections.push('4. **Imperial Age** - Late-game decisions, final engagements');
-  ageSections.push(`${ageSections.length + 1}. **Verdict** - Why the winner won, what the loser could have done differently. Reference specific counter-unit choices and timing mistakes.`);
+  ageSections.push('1. **Dark Age** — 1-2 sentences. Villager count, anything unusual.');
+  if (maxAgeReached >= 2) ageSections.push('2. **Feudal Age** — Strategy identification (rush/boom/FC?), key military choices, first pressure, eco balance.');
+  if (maxAgeReached >= 3) ageSections.push('3. **Castle Age** — Power spikes, tech/unit upgrades, decisive battles, landmark choices.');
+  if (maxAgeReached >= 4) ageSections.push('4. **Imperial Age** — Late-game comp, final engagements, endgame execution.');
+  ageSections.push(`${ageSections.length + 1}. **Verdict** — (a) Why the winner won (specific decisions/timings). (b) 2-3 concrete recommendations for the loser with exact unit/tech/timing alternatives.`);
 
   const ageConstraint = maxAgeReached < 4
     ? `\n\nCRITICAL: The highest age reached in this match is ${AGE_NAMES_NARRATOR[maxAgeReached]}. DO NOT write about ${maxAgeReached < 3 ? 'Castle Age or ' : ''}Imperial Age. DO NOT invent or speculate about ages that were never reached. Only analyze the ages that actually occurred in the data.`
     : '';
 
-  return `You are a professional Age of Empires 4 match analyst and esports caster.
-Write an engaging, insightful match analysis in 400-600 words.
-Use specific timestamps (mm:ss format) when referencing events.
+  return `You are a tactical analyst specializing in Age of Empires 4 competitive matches.
+Your tone is precise, technical, and data-driven — like a chess analyst reviewing a game, not a hype caster.
+Write 400-500 words. Use timestamps (mm:ss) for every claim.
 ${playerRefInstruction}
 
-Structure your analysis BY AGE with these sections:
+STRUCTURE:
 ${ageSections.join('\n')}
 
-STRICT RULES:
-- ONLY write sections for ages that appear in the data. The data will tell you "AGES PRESENT IN THIS MATCH".
-- Never fabricate data, timestamps, unit counts, or events not provided in the input.
-- Never invent battles, unit numbers, or engagements that are not in the data.
-- Be specific about unit names, building names, and strategies.
-- When evaluating army composition, consider counter-unit relationships.
-- When evaluating timing, compare against standard benchmarks.
-- Be analytical but engaging, like a top-tier esports commentator.${ageConstraint}
+WRITING RULES:
+- Dark Age: 1-2 sentences MAX. Only mention villager count and anything unusual (early military, scout kill, etc.). Most Dark Ages are standard — say so and move on.
+- Focus your analysis on the AGE WHERE THE GAME WAS DECIDED. If the game was won in Feudal, spend 60% of your words on Feudal.
+- Every claim must reference data from the input. If you don't have data for something, don't mention it.
+- NEVER fabricate timestamps, unit counts, battles, or events not in the input data.
+- NEVER invent specific numbers for battles (e.g. "X units vs Y units"). You only know total military produced per age, NOT how many were alive at any given moment. Only reference unit counts from the "Key units" and "Army comp" fields.
+- Use exact unit names and building names from the data.
+- Compare army compositions: don't just list units, explain WHY one comp beats the other (counter-unit logic).
+- Compare age-up timings against benchmarks and explain the implications.
+- The Verdict section MUST include 2-3 specific, actionable recommendations for the loser. Be concrete: name the exact unit, tech, or timing they should have chosen differently, and explain why it would have worked. Example: "Building Crossbowmen instead of more Spearmen at 8:00 would have countered the Cataphract transition."
+- If a player's strategy was detected (Rush, Boom, Fast Castle, All-in), explain whether it was well-executed or where it broke down.${ageConstraint}
 
+KNOWLEDGE BASE:
 ${COUNTER_UNIT_MATRIX}
 
 ${TIMING_BENCHMARKS}
@@ -236,7 +243,7 @@ export async function generateMatchNarrative(
         { role: 'system', content: systemPrompt },
         { role: 'user', content: `Analyze this AoE4 match:\n\n${userPrompt}` },
       ],
-      temperature: 0.7,
+      temperature: 0.5,
       max_tokens: 1200,
     });
 

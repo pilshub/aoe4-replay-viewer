@@ -55,6 +55,8 @@ export const CIV_PROFILES: Record<string, string> = {
   'Jeanne d\'Arc': 'French variant with hero Jeanne d\'Arc unit. Divine companions provide auras. Jeanne levels up through ages gaining abilities. Keeps + cavalry focus. Common strats: Jeanne-supported Knight push, hero-centric aggression.',
   'Order of the Dragon': 'HRE variant with Gilded units (stronger but more expensive versions). Inspiration mechanic buffs Gilded units. Prelates more important. Common strats: Gilded MAA timing, quality-over-quantity military.',
   'Zhu Xi\'s Legacy': 'Chinese variant with Imperial Academy. Meditation mechanic recovers units. Shaolin Monks unique. Tax collection enhanced. Common strats: Meditation sustain, Shaolin Monk aggression.',
+  'Sengoku': 'Japanese variant focused on Daimyo lords and provincial system. Yari Cavalry (lance cavalry) and Yari Ashigaru strong early. Oda Clan bonuses for infantry. Shinobi for scouting and raiding. Common strats: Yari Cavalry rush in Feudal, Samurai aggression, fast age-up with eco landmarks.',
+  'Sultanate of Rum': 'Unique civ blending Ottoman and Seljuk elements. Ghulam (heavy infantry) and Sipahi cavalry. Caravanserai trade bonuses. Madrasa produces scholars. Common strats: Ghulam timing, trade-based economy, Sipahi raiding.',
 };
 
 export function getCivKnowledge(civName: string): string {
