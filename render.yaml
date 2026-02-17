@@ -13,4 +13,6 @@ services:
         value: /shared/downloads
       - key: CACHE_TTL_MS
         value: 3600000
+      - key: OPENAI_API_KEY
+        sync: false
     healthCheckPath: /health

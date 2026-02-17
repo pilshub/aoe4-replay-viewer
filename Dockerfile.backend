@@ -14,6 +14,8 @@ RUN npm ci
 COPY server/tsconfig.json ./
 COPY server/src/ ./src/
 RUN npx tsc
+# Copy JSON data files that tsc doesn't include in output
+RUN cp src/data/*.json dist/data/
 
 # === Stage 3: Runtime (both services in one container) ===
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
