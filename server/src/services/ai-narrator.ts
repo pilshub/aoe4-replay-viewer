@@ -209,6 +209,92 @@ const LANGUAGE_NAMES: Record<string, string> = {
   pl: 'Polish',
 };
 
+/**
+ * Build a map of entity names → icon URLs from match data.
+ */
+function buildIconMap(
+  report: MatchAnalysisReport,
+  playerAnalyses: PlayerAnalysis[],
+): Map<string, string> {
+  const map = new Map<string, string>();
+
+  // From age phases: keyUnits, keyBuildings, keyTechs
+  for (const phase of report.agePhases) {
+    for (const u of phase.keyUnits) {
+      if (u.icon && u.name) map.set(u.name, u.icon);
+    }
+    for (const b of phase.keyBuildings) {
+      if (b.icon && b.name) map.set(b.name, b.icon);
+    }
+    for (const t of phase.keyTechs) {
+      if (t.icon && t.name) map.set(t.name, t.icon);
+    }
+  }
+
+  // From player analyses: unitComposition
+  for (const pa of playerAnalyses) {
+    for (const u of pa.unitComposition) {
+      if (u.icon && u.name) map.set(u.name, u.icon);
+    }
+  }
+
+  return map;
+}
+
+/**
+ * Common AoE4 plural forms (Man-at-Arms → Men-at-Arms, Spearman → Spearmen, etc.)
+ */
+function generateVariants(name: string): string[] {
+  const variants = [name];
+  // man → men
+  if (name.includes('man')) variants.push(name.replace(/man\b/i, 'men'));
+  if (name.includes('Man')) variants.push(name.replace(/Man\b/, 'Men'));
+  // Add plural -s
+  if (!name.endsWith('s') && !name.endsWith('y')) variants.push(name + 's');
+  // -ry → -ries, -y → -ies
+  if (name.endsWith('ry')) variants.push(name.slice(0, -1) + 'ies');
+  else if (name.endsWith('y')) variants.push(name.slice(0, -1) + 'ies');
+  return variants;
+}
+
+/**
+ * Replace known unit/building/tech names in narrative text with {{icon:url|Name}} tokens.
+ * Replaces every occurrence to make the narrative consistently enriched with icons.
+ */
+function injectIcons(text: string, iconMap: Map<string, string>): string {
+  if (iconMap.size === 0) return text;
+
+  // Build expanded map with plural variants
+  const expandedEntries: Array<[string, string]> = [];
+  for (const [name, icon] of iconMap) {
+    for (const variant of generateVariants(name)) {
+      expandedEntries.push([variant, icon]);
+    }
+  }
+
+  // Sort by name length (longest first) to avoid partial matches
+  expandedEntries.sort((a, b) => b[0].length - a[0].length);
+
+  const replaced = new Set<string>();
+
+  for (const [name, icon] of expandedEntries) {
+    // Skip if a longer form already replaced this
+    const lowerName = name.toLowerCase();
+    if (replaced.has(lowerName)) continue;
+
+    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    // Match whole word, case-insensitive, not already inside an icon token
+    const regex = new RegExp(`(?<!\\{\\{icon:[^}]*\\|)\\b(${escaped})\\b`, 'i');
+    const match = text.match(regex);
+    if (match) {
+      text = text.replace(regex, `{{icon:${icon}|${match[1]}}}`);
+      replaced.add(lowerName);
+    }
+  }
+
+  return text;
+}
+
 export async function generateMatchNarrative(
   report: MatchAnalysisReport,
   playerAnalyses: PlayerAnalysis[],
@@ -247,9 +333,12 @@ export async function generateMatchNarrative(
       max_tokens: 1200,
     });
 
-    const narrative = response.choices[0]?.message?.content ?? null;
+    let narrative = response.choices[0]?.message?.content ?? null;
     if (narrative) {
       console.log(`[ai-narrator] Narrative generated (${narrative.length} chars)`);
+      // Post-process: inject icon tokens for known units/buildings/techs
+      const iconMap = buildIconMap(report, playerAnalyses);
+      narrative = injectIcons(narrative, iconMap);
     }
     return narrative;
   } catch (err: any) {

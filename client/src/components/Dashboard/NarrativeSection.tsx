@@ -1,8 +1,36 @@
+import { useMemo } from 'react';
+
 interface Props {
   narrative: string;
 }
 
+/** Parse narrative text, replacing {{icon:url}}Name tokens with inline images. */
+function parseNarrative(text: string): Array<{ type: 'text'; value: string } | { type: 'icon'; url: string; name: string }> {
+  const parts: Array<{ type: 'text'; value: string } | { type: 'icon'; url: string; name: string }> = [];
+  const regex = /\{\{icon:([^|]+)\|([^}]+)\}\}/g;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = regex.exec(text)) !== null) {
+    // Text before this match
+    if (match.index > lastIndex) {
+      parts.push({ type: 'text', value: text.slice(lastIndex, match.index) });
+    }
+    parts.push({ type: 'icon', url: match[1], name: match[2] });
+    lastIndex = regex.lastIndex;
+  }
+
+  // Remaining text
+  if (lastIndex < text.length) {
+    parts.push({ type: 'text', value: text.slice(lastIndex) });
+  }
+
+  return parts;
+}
+
 export function NarrativeSection({ narrative }: Props) {
+  const parts = useMemo(() => parseNarrative(narrative), [narrative]);
+
   return (
     <div className="mx-8 my-6 relative">
       {/* Card with parchment subtle texture */}
@@ -33,7 +61,21 @@ export function NarrativeSection({ narrative }: Props) {
             <span className="text-aoe-gold">&#9876;</span>
           </div>
           <div className="font-crimson text-[15px] text-aoe-text leading-relaxed whitespace-pre-line">
-            {narrative}
+            {parts.map((part, i) =>
+              part.type === 'text' ? (
+                <span key={i}>{part.value}</span>
+              ) : (
+                <span key={i} className="inline-flex items-center gap-0.5 align-baseline">
+                  <img
+                    src={part.url}
+                    alt={part.name}
+                    className="w-5 h-5 inline -mt-0.5 rounded-sm"
+                    loading="lazy"
+                  />
+                  <span>{part.name}</span>
+                </span>
+              ),
+            )}
           </div>
         </div>
       </div>
