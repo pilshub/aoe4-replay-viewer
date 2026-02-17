@@ -69,6 +69,19 @@ export interface AgePhase {
   keyTechs: Array<{ name: string; icon: string }>;
 }
 
+export interface ScoreDetail {
+  score: number;
+  reasons: string[];
+}
+
+export interface PlayerScores {
+  playerId: number;
+  macro: ScoreDetail;
+  economy: ScoreDetail;
+  military: ScoreDetail;
+  tech: ScoreDetail;
+}
+
 export interface DeepAnalysis {
   productionTimeline: ProductionTimelinePoint[];
   villagerGaps: VillagerGap[];
@@ -77,5 +90,6 @@ export interface DeepAnalysis {
   economyTimeline: EconomySnapshot[];
   keyMoments: KeyMoment[];
   agePhases: AgePhase[];
+  playerScores: PlayerScores[];
   narrative: string | null;
 }

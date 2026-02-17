@@ -77,6 +77,19 @@ export interface AgePhase {
   keyTechs: Array<{ name: string; icon: string }>;
 }
 
+export interface ScoreDetail {
+  score: number;          // 0-100
+  reasons: string[];      // human-readable breakdown (e.g. "3 gaps, 45s total idle")
+}
+
+export interface PlayerScores {
+  playerId: number;
+  macro: ScoreDetail;
+  economy: ScoreDetail;
+  military: ScoreDetail;
+  tech: ScoreDetail;
+}
+
 export interface MatchAnalysisReport {
   productionTimeline: ProductionTimelinePoint[];
   villagerGaps: VillagerGap[];
@@ -85,6 +98,7 @@ export interface MatchAnalysisReport {
   economyTimeline: EconomySnapshot[];
   keyMoments: KeyMoment[];
   agePhases: AgePhase[];
+  playerScores: PlayerScores[];
 }
 
 // ── Helpers ───────────────────────────────────────────────
@@ -545,6 +559,197 @@ function buildAgePhases(
   return phases.sort((a, b) => a.ageNumber - b.ageNumber || a.playerId - b.playerId);
 }
 
+// ── Player Scores ────────────────────────────────────────
+
+function clamp(val: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, val));
+}
+
+/**
+ * MACRO score (0-100) — ABSOLUTE
+ * Measures villager production consistency.
+ */
+function scoreMacro(villagerGaps: VillagerGap[], playerId: number, duration: number): ScoreDetail {
+  const playerGaps = villagerGaps.filter(g => g.playerId === playerId);
+  const totalGapSeconds = Math.round(playerGaps.reduce((sum, g) => sum + g.duration, 0));
+  const gapRatio = duration > 0 ? totalGapSeconds / duration : 0;
+  const gapCountPenalty = Math.min(playerGaps.length * 3, 20);
+  const score = clamp(Math.round(100 - (gapRatio * 150) - gapCountPenalty), 0, 100);
+
+  const reasons: string[] = [];
+  if (playerGaps.length === 0) {
+    reasons.push('No villager production gaps');
+  } else {
+    reasons.push(`${playerGaps.length} gap${playerGaps.length > 1 ? 's' : ''}, ${totalGapSeconds}s total idle`);
+    const longest = Math.round(Math.max(...playerGaps.map(g => g.duration)));
+    if (longest > 30) reasons.push(`Longest gap: ${longest}s`);
+  }
+
+  return { score, reasons };
+}
+
+/**
+ * ECONOMY score (0-100) — RELATIVE to opponent
+ * Compares total resources spent.
+ */
+function scoreEconomy(
+  economyTimeline: EconomySnapshot[],
+  playerIds: number[],
+): Map<number, ScoreDetail> {
+  const results = new Map<number, ScoreDetail>();
+
+  const finalSpent = new Map<number, number>();
+  for (const pid of playerIds) {
+    const playerSnapshots = economyTimeline.filter(s => s.playerId === pid);
+    const last = playerSnapshots[playerSnapshots.length - 1];
+    finalSpent.set(pid, last?.totalSpent ?? 0);
+  }
+
+  const totalCombined = [...finalSpent.values()].reduce((a, b) => a + b, 0);
+
+  if (totalCombined === 0) {
+    for (const pid of playerIds) results.set(pid, { score: 50, reasons: ['No resources spent'] });
+    return results;
+  }
+
+  for (const pid of playerIds) {
+    const spent = finalSpent.get(pid) ?? 0;
+    const share = spent / totalCombined;
+    const score = clamp(Math.round(50 + (share - 0.5) * 200), 0, 100);
+    const pct = Math.round(share * 100);
+    results.set(pid, {
+      score,
+      reasons: [`${spent.toLocaleString()} resources spent (${pct}% of total)`],
+    });
+  }
+
+  return results;
+}
+
+/**
+ * MILITARY score (0-100) — RELATIVE to opponent
+ * 60% production share + 40% combat wins.
+ */
+function scoreMilitary(
+  buildOrder: BuildOrderEntry[],
+  combatEngagements: CombatEngagement[],
+  playerIds: number[],
+): Map<number, ScoreDetail> {
+  const results = new Map<number, ScoreDetail>();
+
+  // 1. Military production share
+  const milCounts = new Map<number, number>();
+  for (const pid of playerIds) {
+    const count = buildOrder.filter(
+      e => e.playerId === pid && e.eventType === 'build_unit' && isMilitaryUnit(asEntry(e))
+    ).length;
+    milCounts.set(pid, count);
+  }
+  const totalMil = [...milCounts.values()].reduce((a, b) => a + b, 0);
+
+  // 2. Combat wins
+  const wins = new Map<number, number>();
+  for (const pid of playerIds) wins.set(pid, 0);
+
+  const significantCombats = combatEngagements.filter(c => c.intensity !== 'low');
+  for (const combat of significantCombats) {
+    if (combat.estimatedWinner != null) {
+      wins.set(combat.estimatedWinner, (wins.get(combat.estimatedWinner) ?? 0) + 1);
+    }
+  }
+
+  const totalCombats = significantCombats.length;
+
+  for (const pid of playerIds) {
+    const milCount = milCounts.get(pid) ?? 0;
+    const winCount = wins.get(pid) ?? 0;
+
+    const prodShare = totalMil > 0 ? milCount / totalMil : 0.5;
+    const prodScore = 50 + (prodShare - 0.5) * 200;
+
+    let combatScore = 50;
+    if (totalCombats > 0) {
+      const winRate = winCount / totalCombats;
+      combatScore = 50 + (winRate - 0.5) * 150;
+    }
+
+    const score = clamp(Math.round(prodScore * 0.6 + combatScore * 0.4), 0, 100);
+
+    const reasons: string[] = [];
+    reasons.push(`${milCount} military units produced`);
+    if (totalCombats > 0) {
+      reasons.push(`${winCount}/${totalCombats} engagements won`);
+    } else {
+      reasons.push('No major engagements');
+    }
+
+    results.set(pid, { score, reasons });
+  }
+
+  return results;
+}
+
+/**
+ * TECH score (0-100) — RELATIVE to opponent
+ * Compares number of technologies researched.
+ */
+function scoreTech(
+  buildOrder: BuildOrderEntry[],
+  playerIds: number[],
+): Map<number, ScoreDetail> {
+  const results = new Map<number, ScoreDetail>();
+
+  const techCounts = new Map<number, number>();
+  for (const pid of playerIds) {
+    const count = buildOrder.filter(e => e.playerId === pid && e.eventType === 'upgrade').length;
+    techCounts.set(pid, count);
+  }
+
+  const totalTechs = [...techCounts.values()].reduce((a, b) => a + b, 0);
+
+  if (totalTechs === 0) {
+    for (const pid of playerIds) results.set(pid, { score: 50, reasons: ['No technologies researched'] });
+    return results;
+  }
+
+  for (const pid of playerIds) {
+    const count = techCounts.get(pid) ?? 0;
+    const share = count / totalTechs;
+    const score = clamp(Math.round(50 + (share - 0.5) * 200), 0, 100);
+    results.set(pid, {
+      score,
+      reasons: [`${count} technologies researched`],
+    });
+  }
+
+  return results;
+}
+
+function calculatePlayerScores(
+  buildOrder: BuildOrderEntry[],
+  villagerGaps: VillagerGap[],
+  economyTimeline: EconomySnapshot[],
+  combatEngagements: CombatEngagement[],
+  playerIds: number[],
+  duration: number,
+): PlayerScores[] {
+  const ecoScores = scoreEconomy(economyTimeline, playerIds);
+  const milScores = scoreMilitary(buildOrder, combatEngagements, playerIds);
+  const techScores = scoreTech(buildOrder, playerIds);
+
+  const defaultDetail: ScoreDetail = { score: 50, reasons: [] };
+
+  return playerIds.map(pid => {
+    const macro = scoreMacro(villagerGaps, pid, duration);
+    const economy = ecoScores.get(pid) ?? defaultDetail;
+    const military = milScores.get(pid) ?? defaultDetail;
+    const tech = techScores.get(pid) ?? defaultDetail;
+
+    console.log(`[scores] Player ${pid}: Macro=${macro.score} Eco=${economy.score} Mil=${military.score} Tech=${tech.score}`);
+    return { playerId: pid, macro, economy, military, tech };
+  });
+}
+
 // ── Public API ────────────────────────────────────────────
 
 export function analyzeMatchDeep(
@@ -568,6 +773,11 @@ export function analyzeMatchDeep(
 
   const armySnapshots = buildArmySnapshots(buildOrder, playerIds, sortedKeyTimes);
 
+  // Player scores
+  const playerScores = calculatePlayerScores(
+    buildOrder, villagerGaps, economyTimeline, combatEngagements, playerIds, duration,
+  );
+
   console.log(`[match-analyzer] Production: ${productionTimeline.length} points, Villager gaps: ${villagerGaps.length}, Combats: ${combatEngagements.length}, Key moments: ${keyMoments.length}, Age phases: ${agePhases.length}`);
 
   return {
@@ -578,5 +788,6 @@ export function analyzeMatchDeep(
     economyTimeline,
     keyMoments,
     agePhases,
+    playerScores,
   };
 }

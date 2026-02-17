@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import path from 'path';
 import { replayRoutes } from './routes/replay.routes';
 
 const app = express();
@@ -13,6 +14,14 @@ app.get('/health', (_req, res) => {
 });
 
 app.use('/api/replay', replayRoutes);
+
+// ── Serve frontend static files (production) ──────────────
+const clientDir = path.resolve(__dirname, '../client');
+app.use(express.static(clientDir));
+// SPA fallback: any non-API route → index.html
+app.get('*', (_req, res) => {
+  res.sendFile(path.join(clientDir, 'index.html'));
+});
 
 app.listen(PORT, () => {
   console.log(`[server] listening on port ${PORT}`);

@@ -32,9 +32,10 @@ export interface BuildOrderEntry {
 export type StrategyType =
   | 'Feudal Rush'
   | 'Fast Castle'
-  | 'Economic Boom'
+  | 'Semi Fast Castle'
+  | 'Boom (Double TC)'
+  | 'Boom (Trade)'
   | 'Tower Rush'
-  | 'All-in'
   | 'Standard';
 
 export interface AgeUpTiming {

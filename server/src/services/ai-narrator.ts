@@ -183,7 +183,7 @@ WRITING RULES:
 - Compare army compositions: don't just list units, explain WHY one comp beats the other (counter-unit logic).
 - Compare age-up timings against benchmarks and explain the implications.
 - The Verdict section MUST include 2-3 specific, actionable recommendations for the loser. Be concrete: name the exact unit, tech, or timing they should have chosen differently, and explain why it would have worked. Example: "Building Crossbowmen instead of more Spearmen at 8:00 would have countered the Cataphract transition."
-- If a player's strategy was detected (Rush, Boom, Fast Castle, All-in), explain whether it was well-executed or where it broke down.${ageConstraint}
+- If a player's strategy was detected (Rush, Boom, Fast Castle, Semi Fast Castle, Tower Rush), explain whether it was well-executed or where it broke down.${ageConstraint}
 
 KNOWLEDGE BASE:
 ${COUNTER_UNIT_MATRIX}

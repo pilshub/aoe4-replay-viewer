@@ -6,9 +6,10 @@ import type { Aoe4Entry } from '../data/aoe4-data';
 export type StrategyType =
   | 'Feudal Rush'
   | 'Fast Castle'
-  | 'Economic Boom'
+  | 'Semi Fast Castle'
+  | 'Boom (Double TC)'
+  | 'Boom (Trade)'
   | 'Tower Rush'
-  | 'All-in'
   | 'Standard';
 
 export interface AgeUpTiming {
@@ -101,62 +102,125 @@ interface BuildOrderEvent {
   targetAge: number;
 }
 
+// ── Helpers: trade detection ─────────────────────────────
+
+function isTrader(entry: Aoe4Entry): boolean {
+  return entry.type === 'unit' && (
+    entry.baseId === 'trader' ||
+    entry.baseId === 'trade-caravan' ||
+    entry.classes.includes('trade_cart') ||
+    entry.classes.includes('trade_camel')
+  );
+}
+
+function isMarket(entry: Aoe4Entry): boolean {
+  return entry.type === 'building' && (
+    entry.baseId === 'market' ||
+    entry.classes.includes('scar_market') ||
+    entry.classes.includes('exchange')
+  );
+}
+
 // ── Strategy classification ───────────────────────────────
 
-function classifyStrategy(
-  feudalTime: number,
-  castleTime: number,
-  earlyMilitaryCount: number,
-  militaryBuildingCount: number,
-  townCenterCount: number,
-  secondTCTime: number,
-  earlyTowerCount: number,
-  totalMilitaryUnits: number,
-): { strategy: StrategyType; confidence: number; reasons: string[] } {
+interface StrategyInput {
+  feudalTime: number;
+  castleTime: number;
+  earlyMilitaryCount: number;       // military units within 2min of feudal
+  feudalMilitaryCount: number;      // military units produced during entire feudal age
+  militaryBuildingCount: number;
+  townCenterCount: number;
+  secondTCTime: number;
+  earlyTowerCount: number;
+  totalMilitaryUnits: number;
+  traderCount: number;
+  marketCount: number;
+}
+
+function classifyStrategy(input: StrategyInput): { strategy: StrategyType; confidence: number; reasons: string[] } {
+  const {
+    feudalTime, castleTime, earlyMilitaryCount, feudalMilitaryCount,
+    militaryBuildingCount, townCenterCount, secondTCTime,
+    earlyTowerCount, totalMilitaryUnits, traderCount, marketCount,
+  } = input;
+
   const scores: Record<StrategyType, number> = {
     'Feudal Rush': 0,
     'Fast Castle': 0,
-    'Economic Boom': 0,
+    'Semi Fast Castle': 0,
+    'Boom (Double TC)': 0,
+    'Boom (Trade)': 0,
     'Tower Rush': 0,
-    'All-in': 0,
     'Standard': 0,
   };
   const reasons: string[] = [];
 
   // --- Feudal Rush ---
-  if (feudalTime < 300 && feudalTime !== Infinity) { // < 5:00
-    scores['Feudal Rush'] += 3;
+  // Aggressive feudal: fast age-up + lots of early military + stays in feudal or very late castle
+  if (feudalTime < 300 && feudalTime !== Infinity) {
+    scores['Feudal Rush'] += 2;
     reasons.push(`Fast feudal at ${formatTime(feudalTime)}`);
   }
   if (earlyMilitaryCount >= 5 && feudalTime !== Infinity) {
-    scores['Feudal Rush'] += 2;
+    scores['Feudal Rush'] += 3;
     reasons.push(`${earlyMilitaryCount} military units in early feudal`);
   }
   if (militaryBuildingCount >= 2 && townCenterCount <= 1 && feudalTime !== Infinity) {
     scores['Feudal Rush'] += 1;
   }
+  // Key Rush signal: staying in feudal. If player reaches Castle → NOT a pure rush
+  if (castleTime === Infinity && totalMilitaryUnits >= 8) {
+    scores['Feudal Rush'] += 3; // strong: never left feudal
+  } else if (castleTime !== Infinity && castleTime < 780) {
+    scores['Feudal Rush'] -= 3; // reached Castle quickly → not a feudal rush
+  }
 
   // --- Fast Castle ---
-  if (castleTime < 720 && castleTime !== Infinity) { // < 12:00
-    scores['Fast Castle'] += 3;
-    reasons.push(`Fast castle at ${formatTime(castleTime)}`);
+  // Very few or zero military units in feudal, rushes to Castle Age
+  if (castleTime < 780 && castleTime !== Infinity) {
+    scores['Fast Castle'] += 2;
+    reasons.push(`Castle Age at ${formatTime(castleTime)}`);
   }
-  if (earlyMilitaryCount <= 2 && feudalTime !== Infinity) {
-    scores['Fast Castle'] += 1;
+  if (earlyMilitaryCount <= 2 && castleTime !== Infinity && castleTime < 780) {
+    scores['Fast Castle'] += 3;
     reasons.push('Minimal feudal military');
   }
 
-  // --- Economic Boom ---
-  if (secondTCTime < 420) { // 2nd TC by 7:00
-    scores['Economic Boom'] += 3;
+  // --- Semi Fast Castle ---
+  // Gets to Castle Age reasonably fast (<13min) with meaningful feudal military (3+).
+  // The distinction from FC is that they produced military. From Rush is that they DID castle up.
+  if (castleTime < 780 && castleTime !== Infinity && feudalMilitaryCount >= 3) {
+    scores['Semi Fast Castle'] += 3;
+    reasons.push(`${feudalMilitaryCount} military units before Castle`);
+    reasons.push(`Castle Age at ${formatTime(castleTime)}`);
+  }
+  if (earlyMilitaryCount >= 3 && castleTime !== Infinity && castleTime < 780) {
+    scores['Semi Fast Castle'] += 2;
+  }
+
+  // --- Boom (Double TC) ---
+  if (secondTCTime < 480 && secondTCTime !== Infinity) { // 2nd TC by 8:00
+    scores['Boom (Double TC)'] += 3;
     reasons.push(`2nd TC at ${formatTime(secondTCTime)}`);
   }
-  if (earlyMilitaryCount <= 3 && townCenterCount >= 2) {
-    scores['Economic Boom'] += 1;
-  }
   if (townCenterCount >= 3) {
-    scores['Economic Boom'] += 2;
-    reasons.push(`${townCenterCount} Town Centers built`);
+    scores['Boom (Double TC)'] += 2;
+    reasons.push(`${townCenterCount} Town Centers`);
+  }
+  if (earlyMilitaryCount <= 3 && townCenterCount >= 2) {
+    scores['Boom (Double TC)'] += 1;
+  }
+
+  // --- Boom (Trade) ---
+  if (traderCount >= 3) {
+    scores['Boom (Trade)'] += 4;
+    reasons.push(`${traderCount} traders produced`);
+  } else if (traderCount >= 1) {
+    scores['Boom (Trade)'] += 2;
+    reasons.push(`${traderCount} trader${traderCount > 1 ? 's' : ''} produced`);
+  }
+  if (marketCount >= 1 && traderCount >= 2) {
+    scores['Boom (Trade)'] += 1;
   }
 
   // --- Tower Rush ---
@@ -165,15 +229,7 @@ function classifyStrategy(
     reasons.push(`${earlyTowerCount} towers before 5:30`);
   } else if (earlyTowerCount === 1) {
     scores['Tower Rush'] += 2;
-  }
-
-  // --- All-in ---
-  if (militaryBuildingCount >= 3 && totalMilitaryUnits >= 8 && townCenterCount <= 1) {
-    scores['All-in'] += 3;
-    reasons.push('Heavy military commitment, no expansion');
-  }
-  if (totalMilitaryUnits >= 15 && townCenterCount <= 1) {
-    scores['All-in'] += 2;
+    reasons.push(`Early tower`);
   }
 
   // Find best
@@ -192,8 +248,8 @@ function classifyStrategy(
 
   return {
     strategy: best,
-    confidence: Math.min(bestScore / 5, 1.0),
-    reasons: reasons.filter(r => r.length > 0),
+    confidence: Math.min(bestScore / 6, 1.0),
+    reasons: [...new Set(reasons.filter(r => r.length > 0))],  // deduplicate
   };
 }
 
@@ -248,10 +304,14 @@ function analyzePlayer(events: BuildOrderEvent[], playerId: number): PlayerAnaly
   const firstMilBuilding = militaryBuildings.length > 0 ? militaryBuildings[0] : null;
 
   // Early military = units produced within 2 min of feudal
-  // If feudalTime is Infinity (no age-up detected), we can't determine early feudal military
   const earlyMilitaryCount = feudalTime === Infinity
     ? 0
     : militaryUnits.filter(u => u.time < feudalTime + 120).length;
+
+  // Feudal military = all military units produced before Castle Age
+  const feudalMilitaryCount = castleTime === Infinity
+    ? militaryUnits.length  // never reached Castle → all military is "feudal"
+    : militaryUnits.filter(u => u.time < castleTime).length;
 
   // 3. Economic analysis
   const townCenters = playerEvents.filter(e => e.eventType === 'construct' && isTownCenter(asEntry(e)));
@@ -262,12 +322,20 @@ function analyzePlayer(events: BuildOrderEvent[], playerId: number): PlayerAnaly
   const towers = playerEvents.filter(e => e.eventType === 'construct' && isTower(asEntry(e)));
   const earlyTowers = towers.filter(t => t.time < 330); // before 5:30
 
-  // 5. Strategy classification
-  const { strategy, confidence, reasons } = classifyStrategy(
-    feudalTime, castleTime, earlyMilitaryCount,
-    militaryBuildings.length, townCenterCount, secondTCTime,
-    earlyTowers.length, militaryUnits.length,
-  );
+  // 5. Trade analysis
+  const traders = playerEvents.filter(e => e.eventType === 'build_unit' && isTrader(asEntry(e)));
+  const markets = playerEvents.filter(e => e.eventType === 'construct' && isMarket(asEntry(e)));
+
+  // 6. Strategy classification
+  const { strategy, confidence, reasons } = classifyStrategy({
+    feudalTime, castleTime, earlyMilitaryCount, feudalMilitaryCount,
+    militaryBuildingCount: militaryBuildings.length,
+    townCenterCount, secondTCTime,
+    earlyTowerCount: earlyTowers.length,
+    totalMilitaryUnits: militaryUnits.length,
+    traderCount: traders.length,
+    marketCount: markets.length,
+  });
 
   // 6. Unit composition (aggregate by baseId)
   const unitMap = new Map<string, { name: string; icon: string; count: number; baseId: string; displayClass: string }>();

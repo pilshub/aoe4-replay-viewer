@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { useReplayStore } from '../../state/replayStore';
 import { MatchHeader } from './MatchHeader';
+import { PlayerScoresCard } from './PlayerScoresCard';
 import { NarrativeSection } from './NarrativeSection';
 import { AgeAnalysis } from './AgeAnalysis';
 import { ProductionChart } from './ProductionChart';
@@ -42,6 +43,13 @@ export function DashboardView() {
 
       {deepAnalysis?.narrative && (
         <NarrativeSection narrative={deepAnalysis.narrative} />
+      )
+
+      }
+
+      {/* Player Scores — complementary to the narrative */}
+      {deepAnalysis?.playerScores && deepAnalysis.playerScores.length > 0 && (
+        <PlayerScoresCard scores={deepAnalysis.playerScores} metadata={metadata} />
       )}
 
       {/* Age-by-Age Breakdown */}

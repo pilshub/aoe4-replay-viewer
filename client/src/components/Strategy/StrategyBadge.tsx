@@ -1,12 +1,13 @@
 import type { StrategyType } from '../../types/replay.types';
 
 const STRATEGY_STYLES: Record<StrategyType, { bg: string; border: string; text: string }> = {
-  'Feudal Rush':    { bg: 'bg-red-500/10', border: 'border-red-500/30', text: 'text-red-400' },
-  'Fast Castle':    { bg: 'bg-blue-500/10', border: 'border-blue-500/30', text: 'text-blue-400' },
-  'Economic Boom':  { bg: 'bg-green-500/10', border: 'border-green-500/30', text: 'text-green-400' },
-  'Tower Rush':     { bg: 'bg-orange-500/10', border: 'border-orange-500/30', text: 'text-orange-400' },
-  'All-in':         { bg: 'bg-purple-500/10', border: 'border-purple-500/30', text: 'text-purple-400' },
-  'Standard':       { bg: 'bg-aoe-gold/5', border: 'border-aoe-gold-dark/30', text: 'text-aoe-text-secondary' },
+  'Feudal Rush':       { bg: 'bg-red-500/10', border: 'border-red-500/30', text: 'text-red-400' },
+  'Fast Castle':       { bg: 'bg-blue-500/10', border: 'border-blue-500/30', text: 'text-blue-400' },
+  'Semi Fast Castle':  { bg: 'bg-sky-500/10', border: 'border-sky-500/30', text: 'text-sky-400' },
+  'Boom (Double TC)':  { bg: 'bg-green-500/10', border: 'border-green-500/30', text: 'text-green-400' },
+  'Boom (Trade)':      { bg: 'bg-emerald-500/10', border: 'border-emerald-500/30', text: 'text-emerald-400' },
+  'Tower Rush':        { bg: 'bg-orange-500/10', border: 'border-orange-500/30', text: 'text-orange-400' },
+  'Standard':          { bg: 'bg-aoe-gold/5', border: 'border-aoe-gold-dark/30', text: 'text-aoe-text-secondary' },
 };
 
 export function StrategyBadge({ strategy, reasons }: { strategy: StrategyType; reasons?: string[] }) {
