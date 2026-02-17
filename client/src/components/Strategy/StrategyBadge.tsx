@@ -1,12 +1,12 @@
 import type { StrategyType } from '../../types/replay.types';
 
-const STRATEGY_STYLES: Record<StrategyType, { bg: string; text: string }> = {
-  'Feudal Rush':    { bg: 'bg-red-500/20 border-red-500/40', text: 'text-red-400' },
-  'Fast Castle':    { bg: 'bg-blue-500/20 border-blue-500/40', text: 'text-blue-400' },
-  'Economic Boom':  { bg: 'bg-green-500/20 border-green-500/40', text: 'text-green-400' },
-  'Tower Rush':     { bg: 'bg-orange-500/20 border-orange-500/40', text: 'text-orange-400' },
-  'All-in':         { bg: 'bg-purple-500/20 border-purple-500/40', text: 'text-purple-400' },
-  'Standard':       { bg: 'bg-gray-500/20 border-gray-500/40', text: 'text-gray-400' },
+const STRATEGY_STYLES: Record<StrategyType, { bg: string; border: string; text: string }> = {
+  'Feudal Rush':    { bg: 'bg-red-500/10', border: 'border-red-500/30', text: 'text-red-400' },
+  'Fast Castle':    { bg: 'bg-blue-500/10', border: 'border-blue-500/30', text: 'text-blue-400' },
+  'Economic Boom':  { bg: 'bg-green-500/10', border: 'border-green-500/30', text: 'text-green-400' },
+  'Tower Rush':     { bg: 'bg-orange-500/10', border: 'border-orange-500/30', text: 'text-orange-400' },
+  'All-in':         { bg: 'bg-purple-500/10', border: 'border-purple-500/30', text: 'text-purple-400' },
+  'Standard':       { bg: 'bg-aoe-gold/5', border: 'border-aoe-gold-dark/30', text: 'text-aoe-text-secondary' },
 };
 
 export function StrategyBadge({ strategy, reasons }: { strategy: StrategyType; reasons?: string[] }) {
@@ -14,11 +14,11 @@ export function StrategyBadge({ strategy, reasons }: { strategy: StrategyType; r
 
   return (
     <div className="flex flex-col gap-1">
-      <span className={`inline-flex px-2.5 py-1 text-xs font-semibold rounded-md border ${style.bg} ${style.text}`}>
+      <span className={`inline-flex px-2.5 py-1 text-xs font-cinzel tracking-wider rounded border ${style.bg} ${style.border} ${style.text}`}>
         {strategy}
       </span>
       {reasons && reasons.length > 0 && (
-        <div className="text-[10px] text-gray-500 leading-tight">
+        <div className="text-[10px] text-aoe-text-dim leading-tight font-crimson">
           {reasons.join(' · ')}
         </div>
       )}

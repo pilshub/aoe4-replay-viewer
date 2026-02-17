@@ -202,13 +202,26 @@ function classifyStrategy(
 function analyzePlayer(events: BuildOrderEvent[], playerId: number): PlayerAnalysis {
   const playerEvents = events.filter(e => e.playerId === playerId);
 
-  // 1. Age-up timings (deduplicate, take earliest per age)
+  // 1. Age-up timings from age field transitions (more reliable than isAgeUp)
+  const sortedEvents = [...playerEvents].sort((a, b) => a.time - b.time);
   const ageUpMap = new Map<number, { time: number; name: string; icon: string }>();
-  for (const e of playerEvents) {
+  let prevAge = 1;
+  for (const e of sortedEvents) {
+    const age = e.age ?? 1;
+    if (age > prevAge) {
+      if (!ageUpMap.has(age)) {
+        ageUpMap.set(age, { time: e.time, name: '', icon: '' });
+      }
+      prevAge = age;
+    }
+  }
+  // Enrich with landmark names from isAgeUp events
+  for (const e of sortedEvents) {
     if (e.isAgeUp && e.targetAge >= 2) {
       const existing = ageUpMap.get(e.targetAge);
-      if (!existing || e.time < existing.time) {
-        ageUpMap.set(e.targetAge, { time: e.time, name: e.name, icon: e.icon });
+      if (existing && !existing.name) {
+        existing.name = e.name;
+        existing.icon = e.icon;
       }
     }
   }

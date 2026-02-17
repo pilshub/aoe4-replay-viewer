@@ -7,11 +7,11 @@ interface LoadResponse {
   metadata: ReplayMetadata;
 }
 
-export async function loadReplay(url: string): Promise<LoadResponse> {
+export async function loadReplay(url: string, language: string = 'en'): Promise<LoadResponse> {
   const res = await fetch(`${API_BASE}/replay/load`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ url }),
+    body: JSON.stringify({ url, language }),
   });
 
   if (!res.ok) {

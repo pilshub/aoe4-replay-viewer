@@ -7,3 +7,4 @@ downloads/
 .DS_Store
 test_*.json
 replays-parser-src/
+tools/

@@ -127,12 +127,16 @@ export function isAgeUpEvent(entry: Aoe4Entry): { isAgeUp: boolean; targetAge: n
     if (entry.classes.includes('scar_feudal_age_upgrade')) return { isAgeUp: true, targetAge: 2 };
     if (entry.classes.includes('scar_castle_age_upgrade')) return { isAgeUp: true, targetAge: 3 };
     if (entry.classes.includes('scar_imperial_age_upgrade')) return { isAgeUp: true, targetAge: 4 };
-    // Generic age-up without specific age class - infer from age field
-    if (entry.age >= 2) return { isAgeUp: true, targetAge: entry.age };
+    // Generic age-up without specific age class - age field is when it's available,
+    // so it advances to the next age
+    if (entry.age >= 1) return { isAgeUp: true, targetAge: entry.age + 1 };
   }
   // Method 2: Building a landmark (most civs age up by constructing landmarks)
+  // Landmark age = the age it's AVAILABLE at, it advances you to age+1
+  // e.g. age=1 landmark (Dark Age) → advances to Feudal (age 2)
+  //      age=2 landmark (Feudal)   → advances to Castle (age 3)
   if (entry.type === 'building' && entry.classes.includes('landmark')) {
-    if (entry.age >= 2 && entry.age <= 4) return { isAgeUp: true, targetAge: entry.age };
+    if (entry.age >= 1 && entry.age <= 3) return { isAgeUp: true, targetAge: entry.age + 1 };
   }
   return { isAgeUp: false, targetAge: 0 };
 }
@@ -168,10 +172,90 @@ export function isTower(entry: Aoe4Entry): boolean {
   );
 }
 
+export function isVillager(entry: Aoe4Entry): boolean {
+  return entry.type === 'unit' && entry.baseId === 'villager';
+}
+
 export function isEconomicBuilding(entry: Aoe4Entry): boolean {
   return entry.type === 'building' && (
     entry.classes.includes('economy_building') ||
     entry.classes.includes('drop_off_building') ||
     entry.classes.includes('house')
   );
+}
+
+// ── Civilization inference ────────────────────────────────
+
+const CIV_CODE_TO_NAME: Record<string, string> = {
+  ab: 'Abbasid Dynasty', ay: 'Ayyubids', by: 'Byzantines', ch: 'Chinese',
+  de: 'Delhi Sultanate', en: 'English', fr: 'French', gol: 'Golden Horde',
+  hl: 'House of Lancaster', hr: 'Holy Roman Empire', ja: 'Japanese',
+  je: "Jeanne d'Arc", kt: 'Knights Hospitaller', ma: 'Malians',
+  mac: 'Varangian Guard', mo: 'Mongols', od: 'Order of the Dragon',
+  ot: 'Ottomans', ru: 'Rus', sen: 'Sengoku', tug: 'Tughra Dynasty',
+  zx: "Zhu Xi's Legacy",
+};
+
+// Lazy-loaded: baseId → set of civ codes (excluding Byzantines who can get many units)
+let _baseIdToCivs: Map<string, Set<string>> | null = null;
+
+function getBaseIdToCivs(): Map<string, Set<string>> {
+  if (_baseIdToCivs) return _baseIdToCivs;
+  _baseIdToCivs = new Map();
+  const dataDir = path.join(__dirname);
+
+  for (const file of ['units-raw.json', 'buildings-raw.json']) {
+    const filePath = path.join(dataDir, file);
+    if (!fs.existsSync(filePath)) continue;
+    const raw = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+    for (const entry of raw.data ?? []) {
+      const bid = entry.baseId ?? entry.id ?? '';
+      const civs: string[] = entry.civs ?? [];
+      if (!bid || civs.length === 0) continue;
+      const existing = _baseIdToCivs.get(bid) ?? new Set();
+      for (const c of civs) existing.add(c);
+      _baseIdToCivs.set(bid, existing);
+    }
+  }
+  return _baseIdToCivs;
+}
+
+/**
+ * Infer a player's civilization from their build order baseIds.
+ * Scores each civ by how many signature units/buildings the player produced.
+ */
+export function inferCivilization(baseIds: string[]): string | null {
+  const map = getBaseIdToCivs();
+  const civScores = new Map<string, number>();
+
+  for (const bid of baseIds) {
+    const civs = map.get(bid);
+    if (!civs) continue;
+    // Skip common units (available to many civs)
+    const nonByz = [...civs].filter(c => c !== 'by');
+    if (nonByz.length === 1) {
+      // Signature unit — strong signal
+      const civ = nonByz[0];
+      civScores.set(civ, (civScores.get(civ) ?? 0) + 3);
+    } else if (nonByz.length === 2) {
+      // Semi-unique — weaker signal
+      for (const civ of nonByz) {
+        civScores.set(civ, (civScores.get(civ) ?? 0) + 1);
+      }
+    }
+  }
+
+  if (civScores.size === 0) return null;
+
+  // Return the highest-scoring civ
+  let bestCiv = '';
+  let bestScore = 0;
+  for (const [civ, score] of civScores) {
+    if (score > bestScore) {
+      bestCiv = civ;
+      bestScore = score;
+    }
+  }
+
+  return CIV_CODE_TO_NAME[bestCiv] ?? bestCiv;
 }

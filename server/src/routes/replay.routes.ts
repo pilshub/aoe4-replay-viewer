@@ -18,6 +18,7 @@ const replayIndex = new Map<string, string>();
 replayRoutes.post('/load', async (req: Request, res: Response) => {
   try {
     const rawUrl = req.body.url;
+    const language = req.body.language || 'en';
     if (!rawUrl) {
       res.status(400).json({ error: 'Missing "url" in request body' });
       return;
@@ -32,18 +33,18 @@ replayRoutes.post('/load', async (req: Request, res: Response) => {
       return;
     }
 
-    // Check cache
-    const cacheKey = urlToCacheKey(url);
+    // Check cache (include language in key so different languages get fresh narratives)
+    const cacheKey = urlToCacheKey(`${url}:${language}`);
     let data = getCached(cacheKey);
 
     if (!data) {
-      console.log(`[replay] Cache miss for ${url}, calling parser...`);
+      console.log(`[replay] Cache miss for ${url} (lang=${language}), calling parser...`);
       const rawData = await parseReplay(url);
-      data = transformReplayData(rawData);
+      data = await transformReplayData(rawData, language);
       setCache(cacheKey, data);
       console.log(`[replay] Parsed and cached: ${data.entities.length} entities, ${data.events.length} events`);
     } else {
-      console.log(`[replay] Cache hit for ${url}`);
+      console.log(`[replay] Cache hit for ${url} (lang=${language})`);
     }
 
     // Create a friendly replay ID

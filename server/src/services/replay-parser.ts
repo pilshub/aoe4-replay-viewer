@@ -42,6 +42,7 @@ export interface ParsedReplay {
     dataSTLS: { gameLength: number };
   };
   buildOrderEvents: BuildOrderEvent[];
+  commands: ReplayCommand[];
 }
 
 export interface ParsedPlayer {
@@ -686,5 +687,6 @@ export function parseReplayBuffer(gzipBuffer: Buffer): ParsedReplay {
       dataSTLS: { gameLength: duration },
     },
     buildOrderEvents,
+    commands,
   };
 }

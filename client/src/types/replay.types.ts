@@ -75,6 +75,8 @@ export interface MatchAnalysis {
 
 // ── Timeline Data ────────────────────────────────────────
 
+import type { DeepAnalysis } from './analysis.types';
+
 export interface TimelineData {
   metadata: ReplayMetadata;
   entities: OptimizedEntity[];
@@ -82,6 +84,7 @@ export interface TimelineData {
   timeline: Keyframe[];
   buildOrder: BuildOrderEntry[];
   analysis: MatchAnalysis;
+  deepAnalysis: DeepAnalysis;
 }
 
 export interface ReplayMetadata {
@@ -95,6 +98,7 @@ export interface PlayerInfo {
   name: string;
   color: number;
   civ: string;
+  civFlag: string;
   outcome: string;
 }
 

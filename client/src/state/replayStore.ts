@@ -16,6 +16,7 @@ interface ReplayState {
   // UI
   loading: boolean;
   error: string | null;
+  language: string;
   layers: {
     buildings: boolean;
     units: boolean;
@@ -25,6 +26,7 @@ interface ReplayState {
 
   // Actions
   load: (url: string) => Promise<void>;
+  setLanguage: (lang: string) => void;
   setCurrentTime: (time: number) => void;
   togglePlay: () => void;
   setSpeed: (speed: number) => void;
@@ -41,6 +43,7 @@ export const useReplayStore = create<ReplayState>((set, get) => ({
   speed: 1,
   loading: false,
   error: null,
+  language: 'en',
   layers: {
     buildings: true,
     units: true,
@@ -49,14 +52,19 @@ export const useReplayStore = create<ReplayState>((set, get) => ({
   },
 
   load: async (url: string) => {
+    const language = get().language;
     set({ loading: true, error: null, playing: false, currentTime: 0 });
     try {
-      const { replayId, metadata } = await loadReplay(url);
+      const { replayId, metadata } = await loadReplay(url, language);
       const data = await fetchReplayData(replayId);
       set({ replayId, metadata, data, loading: false, playing: true, currentTime: 30 });
     } catch (err: any) {
       set({ loading: false, error: err.message });
     }
+  },
+
+  setLanguage: (lang: string) => {
+    set({ language: lang });
   },
 
   setCurrentTime: (time: number) => {

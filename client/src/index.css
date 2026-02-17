@@ -9,9 +9,9 @@
 }
 
 body {
-  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
-  background: #0a0e17;
-  color: #e2e8f0;
+  font-family: 'Crimson Text', Georgia, serif;
+  background: #0d0d12;
+  color: #e8e0d0;
   overflow: hidden;
   height: 100vh;
 }
@@ -20,18 +20,18 @@ body {
   height: 100vh;
 }
 
-/* Scrollbar */
-::-webkit-scrollbar { width: 6px; }
-::-webkit-scrollbar-track { background: #111827; }
-::-webkit-scrollbar-thumb { background: #374151; border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: #4b5563; }
+/* Scrollbar — gold medieval */
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-track { background: #0d0d12; }
+::-webkit-scrollbar-thumb { background: #8a6d2b; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #c9a84c; }
 
 /* Range slider */
 input[type="range"] {
   -webkit-appearance: none;
   height: 6px;
   border-radius: 3px;
-  background: #1e293b;
+  background: #2a2a35;
   outline: none;
 }
 input[type="range"]::-webkit-slider-thumb {
@@ -39,6 +39,12 @@ input[type="range"]::-webkit-slider-thumb {
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: #d4a853;
+  background: #c9a84c;
   cursor: pointer;
+}
+
+/* Ornamental divider */
+.ornament-line {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, #8a6d2b, transparent);
 }
