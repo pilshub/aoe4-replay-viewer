@@ -7,10 +7,8 @@ services:
     envVars:
       - key: PORT
         value: 3002
-      - key: PARSER_URL
-        value: http://localhost:5069
       - key: DOWNLOAD_DIR
-        value: /shared/downloads
+        value: /app/downloads
       - key: CACHE_TTL_MS
         value: 3600000
       - key: OPENAI_API_KEY
