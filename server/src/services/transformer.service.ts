@@ -4,6 +4,7 @@ import { analyzeMatch, MatchAnalysis } from './strategy-analyzer';
 import { analyzeMatchDeep, MatchAnalysisReport } from './match-analyzer';
 import { generateMatchNarrative } from './ai-narrator';
 import { inferCivilization, type ResourceCosts } from '../data/aoe4-data';
+import type { ReplaySummaryData } from './summary-parser';
 
 // ── Output types ──────────────────────────────────────────────
 
@@ -38,6 +39,7 @@ export interface TimelineData {
   buildOrder: BuildOrderEntry[];
   analysis: MatchAnalysis;
   deepAnalysis: DeepAnalysis;
+  summaryData: ReplaySummaryData | null;
 }
 
 export interface PlayerInfo {
@@ -289,10 +291,13 @@ export async function transformReplayData(raw: any, language: string = 'en'): Pr
   }));
   const report = analyzeMatchDeep(buildOrder, remappedCommands, playerIds, duration);
 
-  // Generate AI narrative
+  // Extract summary data from binary replay (rich stats, timelines, kills)
+  const summaryData = raw.summaryData ?? null;
+
+  // Generate AI narrative (pass summaryData for richer analysis)
   const mapName = summary.mapName ?? summary.MapName ?? raw.mapName ?? 'Unknown';
   const narrative = await generateMatchNarrative(
-    report, analysis.players, players, duration, mapName, language,
+    report, analysis.players, players, duration, mapName, language, summaryData,
   );
 
   return {
@@ -307,5 +312,6 @@ export async function transformReplayData(raw: any, language: string = 'en'): Pr
     buildOrder,
     analysis,
     deepAnalysis: { ...report, narrative },
+    summaryData,
   };
 }

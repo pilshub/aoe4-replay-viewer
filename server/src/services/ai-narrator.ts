@@ -2,6 +2,7 @@ import OpenAI from 'openai';
 import type { MatchAnalysisReport } from './match-analyzer';
 import type { PlayerAnalysis } from './strategy-analyzer';
 import type { PlayerInfo } from './transformer.service';
+import type { ReplaySummaryData } from './summary-parser';
 import {
   COUNTER_UNIT_MATRIX, TIMING_BENCHMARKS, STRATEGY_PATTERNS,
   ANALYSIS_GUIDELINES, getCivKnowledge,
@@ -22,6 +23,7 @@ function buildPrompt(
   players: PlayerInfo[],
   duration: number,
   mapName: string,
+  summaryData: ReplaySummaryData | null,
 ): string {
   const lines: string[] = [];
 
@@ -123,6 +125,125 @@ function buildPrompt(
     for (const m of report.keyMoments) {
       lines.push(`  ${formatTime(m.time)}: ${m.description}`);
     }
+    lines.push('');
+  }
+
+  // Player scores (algorithmic 0-100)
+  if (report.playerScores.length > 0) {
+    lines.push('=== PLAYER SCORES (0-100) ===');
+    for (const ps of report.playerScores) {
+      lines.push(`  Player ${ps.playerId + 1}: Macro=${ps.macro.score} (${ps.macro.reasons.join('; ')}), Economy=${ps.economy.score} (${ps.economy.reasons.join('; ')}), Military=${ps.military.score} (${ps.military.reasons.join('; ')}), Tech=${ps.tech.score} (${ps.tech.reasons.join('; ')})`);
+    }
+    lines.push('');
+  }
+
+  // Army snapshots at key moments (show composition evolution)
+  if (report.armySnapshots.length > 0) {
+    // Pick snapshots at meaningful intervals: ~25%, 50%, 75%, 100% of match duration
+    const snapshotTimes = new Set<number>();
+    const targetPcts = [0.25, 0.5, 0.75, 1.0];
+    for (const pct of targetPcts) {
+      const targetTime = Math.floor(duration * pct);
+      // Find closest snapshot time
+      let closest = report.armySnapshots[0]?.time ?? 0;
+      for (const snap of report.armySnapshots) {
+        if (Math.abs(snap.time - targetTime) < Math.abs(closest - targetTime)) {
+          closest = snap.time;
+        }
+      }
+      snapshotTimes.add(closest);
+    }
+
+    lines.push('=== ARMY COMPOSITION OVER TIME (cumulative units produced, not accounting for deaths) ===');
+    for (const t of [...snapshotTimes].sort((a, b) => a - b)) {
+      lines.push(`  At ${formatTime(t)}:`);
+      for (const snap of report.armySnapshots.filter(s => s.time === t)) {
+        if (snap.units.length > 0) {
+          const unitStr = snap.units.slice(0, 5).map(u => `${u.count}x ${u.name}`).join(', ');
+          lines.push(`    Player ${snap.playerId + 1}: ${unitStr} (${snap.totalSupply} supply)`);
+        } else {
+          lines.push(`    Player ${snap.playerId + 1}: No military`);
+        }
+      }
+    }
+    lines.push('');
+  }
+
+  // === RICH SUMMARY DATA (from replay binary) ===
+  if (summaryData && summaryData.players.length > 0) {
+    lines.push('=== COMBAT STATISTICS (actual game data, NOT estimates) ===');
+    for (let i = 0; i < summaryData.players.length; i++) {
+      const sp = summaryData.players[i];
+      const displayName = players[i]?.name ?? sp.playerName;
+      const kd = sp.unitsLost > 0 ? (sp.unitsKilled / sp.unitsLost).toFixed(1) : 'N/A';
+      const efficiency = sp.unitsKilledResourceValue > 0 && sp.unitsLostResourceValue > 0
+        ? (sp.unitsKilledResourceValue / sp.unitsLostResourceValue).toFixed(2)
+        : 'N/A';
+      lines.push(`  ${displayName}:`);
+      lines.push(`    Units killed: ${sp.unitsKilled} (${sp.unitsKilledResourceValue} res value)`);
+      lines.push(`    Units lost: ${sp.unitsLost} (${sp.unitsLostResourceValue} res value)`);
+      lines.push(`    K/D ratio: ${kd}, Combat efficiency: ${efficiency}x`);
+      lines.push(`    Buildings razed: ${sp.buildingsRazed}, Buildings lost: ${sp.buildingsLost}`);
+      if (sp.sacredSitesCaptured > 0 || sp.relicsCaptured > 0) {
+        lines.push(`    Sacred sites captured: ${sp.sacredSitesCaptured}, Relics: ${sp.relicsCaptured}`);
+      }
+      lines.push(`    Largest army: ${sp.largestArmy} supply`);
+    }
+    lines.push('');
+
+    // Resource gathering comparison
+    lines.push('=== TOTAL RESOURCES ===');
+    for (let i = 0; i < summaryData.players.length; i++) {
+      const sp = summaryData.players[i];
+      const displayName = players[i]?.name ?? sp.playerName;
+      const g = sp.totalResourcesGathered;
+      const s = sp.totalResourcesSpent;
+      const totalGathered = Math.round(g.food + g.gold + g.stone + g.wood);
+      const totalSpent = Math.round(s.food + s.gold + s.stone + s.wood);
+      lines.push(`  ${displayName}: Gathered ${totalGathered} (F:${Math.round(g.food)} G:${Math.round(g.gold)} S:${Math.round(g.stone)} W:${Math.round(g.wood)}) | Spent ${totalSpent}`);
+    }
+    lines.push('');
+
+    // Score timeline (show key moments)
+    const firstPlayer = summaryData.players[0];
+    if (firstPlayer?.timeline.length > 0) {
+      lines.push('=== IN-GAME SCORE TIMELINE ===');
+      // Show scores at 25%, 50%, 75%, end
+      const tl = firstPlayer.timeline;
+      const indices = [
+        Math.floor(tl.length * 0.25),
+        Math.floor(tl.length * 0.5),
+        Math.floor(tl.length * 0.75),
+        tl.length - 1,
+      ].filter((v, i, a) => a.indexOf(v) === i);
+
+      for (const idx of indices) {
+        const ts = tl[idx]?.timestamp ?? 0;
+        lines.push(`  At ${formatTime(ts)}:`);
+        for (let p = 0; p < summaryData.players.length; p++) {
+          const ptl = summaryData.players[p]?.timeline[idx];
+          if (ptl) {
+            const displayName = players[p]?.name ?? summaryData.players[p].playerName;
+            lines.push(`    ${displayName}: Score ${Math.round(ptl.scoreTotal)} (Eco:${Math.round(ptl.scoreEconomy)} Mil:${Math.round(ptl.scoreMilitary)} Tech:${Math.round(ptl.scoreTechnology)})`);
+          }
+        }
+      }
+      lines.push('');
+    }
+  }
+
+  // Economy comparison at end of match
+  if (report.economyTimeline.length > 0) {
+    lines.push('=== ECONOMY SUMMARY ===');
+    for (const pid of [...new Set(report.economyTimeline.map(e => e.playerId))]) {
+      const playerSnaps = report.economyTimeline.filter(s => s.playerId === pid);
+      const final = playerSnaps[playerSnaps.length - 1];
+      if (final) {
+        const milPct = Math.round(final.militaryRatio * 100);
+        lines.push(`  Player ${pid + 1}: ${final.totalSpent} total spent (${milPct}% military, ${100 - milPct}% eco+tech)`);
+      }
+    }
+    lines.push('');
   }
 
   return lines.join('\n');
@@ -178,12 +299,16 @@ WRITING RULES:
 - Focus your analysis on the AGE WHERE THE GAME WAS DECIDED. If the game was won in Feudal, spend 60% of your words on Feudal.
 - Every claim must reference data from the input. If you don't have data for something, don't mention it.
 - NEVER fabricate timestamps, unit counts, battles, or events not in the input data.
-- NEVER invent specific numbers for battles (e.g. "X units vs Y units"). You only know total military produced per age, NOT how many were alive at any given moment. Only reference unit counts from the "Key units" and "Army comp" fields.
+- If COMBAT STATISTICS are provided, use them for precise claims: K/D ratio, combat efficiency, units killed/lost, resource value traded. These are REAL game data.
+- If COMBAT STATISTICS are NOT provided, do NOT invent specific numbers for battles. Only reference unit counts from the "Key units" and "Army comp" fields.
 - Use exact unit names and building names from the data.
 - Compare army compositions: don't just list units, explain WHY one comp beats the other (counter-unit logic).
 - Compare age-up timings against benchmarks and explain the implications.
 - The Verdict section MUST include 2-3 specific, actionable recommendations for the loser. Be concrete: name the exact unit, tech, or timing they should have chosen differently, and explain why it would have worked. Example: "Building Crossbowmen instead of more Spearmen at 8:00 would have countered the Cataphract transition."
-- If a player's strategy was detected (Rush, Boom, Fast Castle, Semi Fast Castle, Tower Rush), explain whether it was well-executed or where it broke down.${ageConstraint}
+- If a player's strategy was detected (Rush, Boom, Fast Castle, Semi Fast Castle, Tower Rush), explain whether it was well-executed or where it broke down.
+- Use Player Scores to support your analysis — a low Macro score means villager production issues, low Military means fewer units or lost engagements.
+- Use Army Composition snapshots to track how each player's army evolved. Note critical moments where one player's comp countered the other.
+- Use Economy Summary to assess commitment: >60% military spending = aggressive, <30% = booming.${ageConstraint}
 
 KNOWLEDGE BASE:
 ${COUNTER_UNIT_MATRIX}
@@ -337,6 +462,7 @@ export async function generateMatchNarrative(
   duration: number,
   mapName: string,
   language: string = 'en',
+  summaryData: ReplaySummaryData | null = null,
 ): Promise<string | null> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
@@ -345,7 +471,7 @@ export async function generateMatchNarrative(
   }
 
   const client = new OpenAI({ apiKey });
-  const userPrompt = buildPrompt(report, playerAnalyses, players, duration, mapName);
+  const userPrompt = buildPrompt(report, playerAnalyses, players, duration, mapName, summaryData);
 
   // Determine max age reached from age phases
   let maxAgeReached = 1;
@@ -359,7 +485,7 @@ export async function generateMatchNarrative(
 
   try {
     const response = await client.chat.completions.create({
-      model: 'gpt-4o-mini',
+      model: 'gpt-4o',
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: `Analyze this AoE4 match:\n\n${userPrompt}` },

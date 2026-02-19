@@ -35,8 +35,7 @@ COMMON STRATEGIES:
 2. FAST CASTLE: Minimal military in Feudal, rush to Castle Age for stronger units (Knights, Crossbows, siege). Goal: power spike. Risk: vulnerable to Feudal aggression.
 3. ECONOMIC BOOM: Build 2+ Town Centers, mass villagers, delayed military. Goal: overwhelming economy. Risk: dies to early all-in.
 4. TOWER RUSH: Build towers aggressively near enemy base in Feudal. Goal: deny resources. Risk: expensive, easy to counter if scouted.
-5. ALL-IN: Commit everything to military, no expansion, no eco upgrades. Goal: win before resources run out. Risk: loses if game goes long.
-6. STANDARD: Balanced approach, moderate eco + military. Adapts to opponent. Most common in competitive play.`;
+5. STANDARD: Balanced approach, moderate eco + military. Adapts to opponent. Most common in competitive play.`;
 
 export const CIV_PROFILES: Record<string, string> = {
   'English': 'Longbowmen are core unit (outrange most Feudal units). Network of Castles gives +25% attack speed near keeps/TCs. Strong defensive early game, good at holding positions. Council Hall landmark doubles Longbow production. Farm bonus reduces wood cost. Common strats: Longbow rush, defensive Castle boom.',

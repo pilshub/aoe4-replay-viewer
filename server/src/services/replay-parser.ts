@@ -1,5 +1,6 @@
 import zlib from 'zlib';
 import { getAoe4Lookup, getPbgidSets, lookupPbgid, isAgeUpEvent, ResourceCosts } from '../data/aoe4-data';
+import { parseReplaySummary, type ReplaySummaryData } from './summary-parser';
 
 // ── Command types (from Java aoe4replayanalyzer ParserProvider) ─
 // Full mapping: 3=BuildUnit, 5=CancelUnit, 12=SetRallyPoint, 14=DeleteBuilding,
@@ -43,6 +44,7 @@ export interface ParsedReplay {
   };
   buildOrderEvents: BuildOrderEvent[];
   commands: ReplayCommand[];
+  summaryData: ReplaySummaryData | null;
 }
 
 export interface ParsedPlayer {
@@ -677,6 +679,17 @@ export function parseReplayBuffer(gzipBuffer: Buffer): ParsedReplay {
   const totalEntities = players.reduce((s, p) => s + p.units.length, 0);
   console.log(`[replay-parser] Generated ${totalEntities} entities for ${players.length} players`);
 
+  // Extract rich summary data from Relic Chunky section
+  let summaryData: ReplaySummaryData | null = null;
+  try {
+    summaryData = parseReplaySummary(data);
+    if (summaryData) {
+      console.log(`[replay-parser] Summary data: ${summaryData.players.length} players with timelines`);
+    }
+  } catch (err: any) {
+    console.log(`[replay-parser] Summary extraction failed (non-fatal): ${err.message}`);
+  }
+
   return {
     gameSummary: {
       duration,
@@ -688,5 +701,6 @@ export function parseReplayBuffer(gzipBuffer: Buffer): ParsedReplay {
     },
     buildOrderEvents,
     commands,
+    summaryData,
   };
 }
