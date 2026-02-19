@@ -11,6 +11,44 @@ import { getGlobalIconMap } from '../data/aoe4-data';
 
 const AGE_NAMES_NARRATOR = ['', 'Dark Age', 'Feudal Age', 'Castle Age', 'Imperial Age'];
 
+// ── Rich token injection data ────────────────────────────────
+
+/** Age name variants → age number (for {{age:N|Name}} tokens) */
+const AGE_PATTERNS: Array<[RegExp, number, string]> = [
+  // Spanish (longest first to avoid partial matches)
+  [/Edad de los Castillos/gi, 3, 'Edad de los Castillos'],
+  [/Edad Imperial/gi, 4, 'Edad Imperial'],
+  [/Edad Feudal/gi, 2, 'Edad Feudal'],
+  [/Edad Oscura/gi, 1, 'Edad Oscura'],
+  // English
+  [/Imperial Age/gi, 4, 'Imperial Age'],
+  [/Castle Age/gi, 3, 'Castle Age'],
+  [/Feudal Age/gi, 2, 'Feudal Age'],
+  [/Dark Age/gi, 1, 'Dark Age'],
+];
+
+/** Spanish civ name variants → English civ key for flag lookup */
+const SPANISH_CIV_VARIANTS: Record<string, string[]> = {
+  'English': ['los ingleses', 'ingleses', 'el inglés'],
+  'French': ['los franceses', 'franceses', 'el francés'],
+  'Chinese': ['los chinos', 'chinos'],
+  'Mongols': ['los mongoles', 'mongoles'],
+  'Rus': ['los rusos', 'rusos'],
+  'Delhi Sultanate': ['el Sultanato de Delhi', 'Sultanato de Delhi', 'Delhi'],
+  'Abbasid Dynasty': ['los abasíes', 'los abasidas', 'abasíes', 'abasidas'],
+  'Holy Roman Empire': ['el Sacro Imperio', 'Sacro Imperio'],
+  'Ottomans': ['los otomanos', 'otomanos'],
+  'Malians': ['los malienses', 'malienses'],
+  'Byzantines': ['los bizantinos', 'bizantinos'],
+  'Japanese': ['los japoneses', 'japoneses'],
+  'Ayyubids': ['los ayubíes', 'ayubíes'],
+  "Jeanne d'Arc": ['Juana de Arco'],
+  'Order of the Dragon': ['la Orden del Dragón', 'Orden del Dragón'],
+  "Zhu Xi's Legacy": ['el Legado de Zhu Xi', 'Legado de Zhu Xi'],
+  'Sengoku': ['Sengoku'],
+  'Golden Horde': ['la Horda de Oro', 'Horda de Oro'],
+};
+
 function formatTime(seconds: number): string {
   const m = Math.floor(seconds / 60);
   const s = Math.floor(seconds % 60);
@@ -308,7 +346,16 @@ WRITING RULES:
 - If a player's strategy was detected (Rush, Boom, Fast Castle, Semi Fast Castle, Tower Rush), explain whether it was well-executed or where it broke down.
 - Use Player Scores to support your analysis — a low Macro score means villager production issues, low Military means fewer units or lost engagements.
 - Use Army Composition snapshots to track how each player's army evolved. Note critical moments where one player's comp countered the other.
-- Use Economy Summary to assess commitment: >60% military spending = aggressive, <30% = booming.${ageConstraint}
+- Use Economy Summary to assess commitment: >60% military spending = aggressive, <30% = booming.
+
+FORMATTING RULES:
+- Use ### headers for each section (e.g. ### Dark Age, ### Feudal Age, ### Verdict).
+- After a section header, do NOT repeat the age name at the start of the paragraph. The header already identifies the age. Jump straight into the analysis.
+- Refer to each civilization ONCE by its full name at the start, then use short forms ("the French", "the Ayyubids" — never "los franceses" after first mention).
+- When listing unit counts, use the format "Nx UnitName" (e.g. "109 Archers", "23 Royal Knights"). DO NOT use "x" separator.
+- Write short paragraphs (2-3 sentences each). Add a blank line between paragraphs.
+- The Verdict section should start with (a) why the winner won, then (b) numbered recommendations (1., 2., 3.) each on its own line.
+- CRITICAL: ALL unit, building, and technology names MUST stay in English exactly as they appear in the game data. NEVER translate them. Write "Royal Knight" not "Caballero Real". Write "Spearman" not "Lancero". Write "Archery Range" not "Campo de Tiro". Write "Town Center" not "Centro Urbano". The surrounding text can be in any language, but game entity names MUST be in English. This is mandatory for the icon system to work.${ageConstraint}
 
 KNOWLEDGE BASE:
 ${COUNTER_UNIT_MATRIX}
@@ -374,7 +421,192 @@ function buildIconMap(
     }
   }
 
+  // Add Spanish translations so GPT's Spanish names also get icons
+  const SPANISH_UNIT_NAMES: Record<string, string> = {
+    // Common units
+    'Aldeano': 'Villager', 'Aldeanos': 'Villager',
+    'Lancero': 'Spearman', 'Lanceros': 'Spearman',
+    'Arquero': 'Archer', 'Arqueros': 'Archer',
+    'Ballestero': 'Crossbowman', 'Ballesteros': 'Crossbowman',
+    'Hombre de Armas': 'Man-at-Arms', 'Hombres de Armas': 'Man-at-Arms',
+    'Caballero': 'Knight', 'Caballeros': 'Knight',
+    'Caballero Real': 'Royal Knight', 'Caballeros Reales': 'Royal Knight',
+    'Jinete': 'Horseman', 'Jinetes': 'Horseman',
+    'Explorador': 'Scout', 'Exploradores': 'Scout',
+    'Ariete': 'Battering Ram', 'Arietes': 'Battering Ram',
+    'Mangonela': 'Mangonel', 'Mangonelas': 'Mangonel',
+    'Trabuco': 'Counterweight Trebuchet', 'Trabucos': 'Counterweight Trebuchet',
+    'Trebuchet': 'Counterweight Trebuchet', 'Trebuchets': 'Counterweight Trebuchet',
+    'Bombardero': 'Bombard', 'Bombarderos': 'Bombard',
+    'Arquero a caballo': 'Horse Archer', 'Arqueros a caballo': 'Horse Archer',
+    'Lancero de Camello': 'Camel Lancer', 'Lanceros de Camello': 'Camel Lancer',
+    'Arquero de Camello': 'Camel Archer', 'Arqueros de Camello': 'Camel Archer',
+    // Civ-specific units
+    'Catafracto': 'Cataphract', 'Catafractos': 'Cataphract',
+    'Jenízaro': 'Janissary', 'Jenízaros': 'Janissary',
+    'Sipahi': 'Sipahi',
+    'Granadero': 'Grenadier', 'Granaderos': 'Grenadier',
+    'Longbowman': 'Longbowman', 'Longbowmen': 'Longbowman',
+    'Samurái': 'Samurai', 'Samuráis': 'Samurai',
+    'Elefante de Guerra': 'War Elephant', 'Elefantes de Guerra': 'War Elephant',
+    'Camello': 'Camel Rider', 'Camellos': 'Camel Rider',
+    'Infante': 'Man-at-Arms', 'Infantes': 'Man-at-Arms',
+    'Mosquetero': 'Handcannoneer', 'Mosqueteros': 'Handcannoneer',
+    'Cañonero': 'Handcannoneer', 'Cañoneros': 'Handcannoneer',
+    'Piquero': 'Spearman', 'Piqueros': 'Spearman',
+    'Espringalda': 'Springald', 'Espringaldas': 'Springald',
+    'Culverin': 'Culverin', 'Culverín': 'Culverin',
+    'Zhuge Nu': 'Zhuge Nu',
+    'Nido de Abejas': 'Nest of Bees',
+    'Mangudai': 'Mangudai',
+    'Arbaletrier': 'Arbaletrier', 'Arbaletriers': 'Arbaletrier',
+    'Guerrero Donso': 'Donso', 'Guerreros Donso': 'Donso',
+    'Guerrero Musofadi': 'Musofadi Warrior', 'Guerreros Musofadi': 'Musofadi Warrior',
+    'Monje': 'Monk', 'Monjes': 'Monk',
+    'Prelado': 'Prelate', 'Prelados': 'Prelate',
+    'Imam': 'Imam', 'Imanes': 'Imam',
+    'Galera': 'Galley', 'Galeras': 'Galley',
+    'Ghulam': 'Ghulam', 'Ghulams': 'Ghulam',
+    // Buildings
+    'Centro Urbano': 'Town Center', 'Centros Urbanos': 'Town Center',
+    'Cuartel': 'Barracks', 'Cuarteles': 'Barracks',
+    'Establos': 'Stable', 'Establo': 'Stable',
+    'Campo de Tiro': 'Archery Range',
+    'Herrería': 'Blacksmith',
+    'Mercado': 'Market', 'Mercados': 'Market',
+    'Molino': 'Mill', 'Molinos': 'Mill',
+    'Torre': 'Outpost', 'Torres': 'Outpost',
+    'Castillo': 'Keep', 'Castillos': 'Keep',
+    'Muralla': 'Stone Wall', 'Murallas': 'Stone Wall',
+    'Monasterio': 'Monastery', 'Monasterios': 'Monastery',
+    'Universidad': 'University',
+    'Puerta': 'Gate', 'Puertas': 'Gate',
+    'Taller de Asedio': 'Siege Workshop',
+    'Muelle': 'Dock', 'Muelles': 'Dock',
+    // Technologies
+    'Herrero': 'Blacksmith',
+    'Balística': 'Ballistics',
+    'Química': 'Chemistry',
+  };
+
+  for (const [esName, enName] of Object.entries(SPANISH_UNIT_NAMES)) {
+    const icon = map.get(enName);
+    if (icon && !map.has(esName)) {
+      map.set(esName, icon);
+    }
+  }
+
   return map;
+}
+
+// ── Token injection helpers ──────────────────────────────────
+
+/** Check if a position in text falls inside any existing token */
+function isInsideToken(text: string, position: number): boolean {
+  const tokenRegex = /\{\{(?:icon|civ|age|time|header):[^}]*\}\}/g;
+  let match: RegExpExecArray | null;
+  while ((match = tokenRegex.exec(text)) !== null) {
+    if (position >= match.index && position < match.index + match[0].length) return true;
+  }
+  return false;
+}
+
+/** Convert markdown headers (### Title) to {{header:Title}} tokens */
+function convertHeaders(text: string): string {
+  return text.replace(/^#{1,4}\s+(.+)$/gm, (_match, title) => {
+    // Strip bold markers from header text
+    const clean = title.replace(/\*\*/g, '').trim();
+    return `{{header:${clean}}}`;
+  });
+}
+
+/** Replace age names with {{age:N|Name}} tokens */
+function injectAgeTokens(text: string): string {
+  for (const [pattern, ageNum, _displayName] of AGE_PATTERNS) {
+    // Replace ALL occurrences (ages are mentioned multiple times)
+    text = text.replace(pattern, (match, ...args) => {
+      // The match offset is the second-to-last argument in replace callback
+      const offset = typeof args[args.length - 2] === 'number' ? args[args.length - 2] as number : -1;
+      if (offset >= 0 && isInsideToken(text, offset)) return match;
+      return `{{age:${ageNum}|${match}}}`;
+    });
+  }
+  return text;
+}
+
+/** Replace civ names with {{civ:flagURL|Name}} tokens */
+function injectCivTokens(text: string, players: PlayerInfo[]): string {
+  // Build civ name → flag URL map from match players
+  const civEntries: Array<[string, string]> = [];
+
+  for (const player of players) {
+    if (!player.civFlag || !player.civ || player.civ === 'Unknown') continue;
+
+    // English civ name
+    civEntries.push([player.civ, player.civFlag]);
+
+    // Spanish variants
+    const variants = SPANISH_CIV_VARIANTS[player.civ] ?? [];
+    for (const v of variants) {
+      civEntries.push([v, player.civFlag]);
+    }
+  }
+
+  // Sort longest first
+  civEntries.sort((a, b) => b[0].length - a[0].length);
+
+  const replaced = new Set<string>();
+
+  for (const [name, flagUrl] of civEntries) {
+    const lower = name.toLowerCase();
+    if (replaced.has(lower)) continue;
+
+    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(`\\b(${escaped})\\b`, 'ig');
+
+    // Replace ALL occurrences not inside existing tokens
+    let result = '';
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
+    let didReplace = false;
+
+    while ((match = regex.exec(text)) !== null) {
+      if (!isInsideToken(text, match.index)) {
+        result += text.slice(lastIndex, match.index);
+        result += `{{civ:${flagUrl}|${match[1]}}}`;
+        lastIndex = regex.lastIndex;
+        didReplace = true;
+      }
+    }
+
+    if (didReplace) {
+      result += text.slice(lastIndex);
+      text = result;
+      replaced.add(lower);
+    }
+  }
+
+  return text;
+}
+
+/** Wrap timestamps (M:SS or MM:SS) with {{time:...}} tokens */
+function injectTimeTokens(text: string): string {
+  // Match timestamps like 4:20, 12:05, 0:30 that are NOT inside existing tokens
+  const regex = /(\d{1,3}:\d{2})/g;
+  let result = '';
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = regex.exec(text)) !== null) {
+    if (!isInsideToken(text, match.index)) {
+      result += text.slice(lastIndex, match.index);
+      result += `{{time:${match[1]}}}`;
+      lastIndex = regex.lastIndex;
+    }
+  }
+
+  result += text.slice(lastIndex);
+  return result;
 }
 
 /**
@@ -411,8 +643,7 @@ function injectIcons(text: string, iconMap: Map<string, string>): string {
   // Sort by name length (longest first) to avoid partial matches
   expandedEntries.sort((a, b) => b[0].length - a[0].length);
 
-  // Split text into segments: "safe to replace" vs "inside markdown/urls"
-  // We'll work on a simple approach: do replacements, then verify no nesting
+  // Track which base names (lowercased) have already been handled via a longer variant
   const replaced = new Set<string>();
 
   for (const [name, icon] of expandedEntries) {
@@ -422,34 +653,27 @@ function injectIcons(text: string, iconMap: Map<string, string>): string {
     const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const regex = new RegExp(`\\b(${escaped})\\b`, 'ig');
 
-    // Find all matches and only replace ones NOT inside an existing {{icon:...}} token
+    // Replace ALL occurrences not inside existing tokens
+    let result = '';
+    let lastIndex = 0;
     let match: RegExpExecArray | null;
     let didReplace = false;
-    const tokenRanges: Array<[number, number]> = [];
 
-    // Find all existing token ranges
-    const tokenRegex = /\{\{icon:[^}]*\}\}/g;
-    let tokenMatch: RegExpExecArray | null;
-    while ((tokenMatch = tokenRegex.exec(text)) !== null) {
-      tokenRanges.push([tokenMatch.index, tokenMatch.index + tokenMatch[0].length]);
-    }
-
-    // Find first match not inside an existing token
     while ((match = regex.exec(text)) !== null) {
       const pos = match.index;
-      const inside = tokenRanges.some(([start, end]) => pos >= start && pos < end);
-      if (!inside) {
-        // Replace this occurrence
-        const before = text.slice(0, pos);
-        const after = text.slice(pos + match[0].length);
-        const replacement = `{{icon:${icon}|${match[1]}}}`;
-        text = before + replacement + after;
+      if (!isInsideToken(text, pos)) {
+        result += text.slice(lastIndex, pos);
+        result += `{{icon:${icon}|${match[1]}}}`;
+        lastIndex = regex.lastIndex;
         didReplace = true;
-        break; // Only replace first occurrence per name
       }
     }
 
-    if (didReplace) replaced.add(lowerName);
+    if (didReplace) {
+      result += text.slice(lastIndex);
+      text = result;
+      replaced.add(lowerName);
+    }
   }
 
   return text;
@@ -497,9 +721,13 @@ export async function generateMatchNarrative(
     let narrative = response.choices[0]?.message?.content ?? null;
     if (narrative) {
       console.log(`[ai-narrator] Narrative generated (${narrative.length} chars)`);
-      // Post-process: inject icon tokens for known units/buildings/techs
+      // Post-process: inject rich tokens in order (headers → ages → civs → icons → times)
+      narrative = convertHeaders(narrative);
+      narrative = injectAgeTokens(narrative);
+      narrative = injectCivTokens(narrative, players);
       const iconMap = buildIconMap(report, playerAnalyses);
       narrative = injectIcons(narrative, iconMap);
+      narrative = injectTimeTokens(narrative);
     }
     return narrative;
   } catch (err: any) {

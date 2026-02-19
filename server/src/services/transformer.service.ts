@@ -273,6 +273,11 @@ export async function transformReplayData(raw: any, language: string = 'en'): Pr
       const inferred = inferCivilization(playerBaseIds);
       if (inferred) {
         player.civ = inferred;
+        // Also update civFlag based on inferred civ
+        const slug = Object.entries(CIV_DISPLAY_NAMES).find(([, v]) => v === inferred)?.[0] ?? '';
+        if (slug && CIV_FLAGS[slug]) {
+          player.civFlag = CIV_FLAGS[slug];
+        }
         console.log(`[transformer] Inferred civ for player ${player.playerId}: ${inferred}`);
       }
     }
