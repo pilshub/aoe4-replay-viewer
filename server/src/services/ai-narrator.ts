@@ -315,47 +315,88 @@ function buildSystemPrompt(players: PlayerInfo[], language: string, maxAgeReache
   // Build age sections dynamically based on actual data
   const ageSections: string[] = [];
   ageSections.push('1. **Dark Age** — 1-2 sentences. Villager count, anything unusual.');
-  if (maxAgeReached >= 2) ageSections.push('2. **Feudal Age** — Strategy identification (rush/boom/FC?), key military choices, first pressure, eco balance.');
-  if (maxAgeReached >= 3) ageSections.push('3. **Castle Age** — Power spikes, tech/unit upgrades, decisive battles, landmark choices.');
-  if (maxAgeReached >= 4) ageSections.push('4. **Imperial Age** — Late-game comp, final engagements, endgame execution.');
-  ageSections.push(`${ageSections.length + 1}. **Verdict** — (a) Why the winner won (specific decisions/timings). (b) 2-3 concrete recommendations for the loser with exact unit/tech/timing alternatives.`);
+  if (maxAgeReached >= 2) ageSections.push('2. **Feudal Age** — Narrate chronologically: first military unit and WHY, initial aggression, how each player reacted to the other (cause→effect), key fights with outcomes, army evolution. Also: villager production gaps, eco techs researched, villager losses. Multiple paragraphs.');
+  if (maxAgeReached >= 3) ageSections.push('3. **Castle Age** — Who aged up first and why it mattered. New units/techs and their COUNTER relationships (e.g. "Camel Lancers counter both cavalry AND archers due to their bonus damage"). Decisive battles, landmark choices, how the endgame played out.');
+  if (maxAgeReached >= 4) ageSections.push('4. **Imperial Age** — Late-game composition, siege warfare, final decisive engagements, endgame execution.');
+  ageSections.push(`${ageSections.length + 1}. **Verdict** — Three parts: (a) The specific moment/decision that decided the game. (b) Economic & tech analysis: who had better eco? who invested in upgrades? idle TC time? (c) 2-3 numbered recommendations for the loser with exact unit/tech/timing and a clear explanation of WHY it would have changed the outcome, using counter-unit logic.`);
 
   const ageConstraint = maxAgeReached < 4
     ? `\n\nCRITICAL: The highest age reached in this match is ${AGE_NAMES_NARRATOR[maxAgeReached]}. DO NOT write about ${maxAgeReached < 3 ? 'Castle Age or ' : ''}Imperial Age. DO NOT invent or speculate about ages that were never reached. Only analyze the ages that actually occurred in the data.`
     : '';
 
-  return `You are a tactical analyst specializing in Age of Empires 4 competitive matches.
-Your tone is precise, technical, and data-driven — like a chess analyst reviewing a game, not a hype caster.
-Write 400-500 words. Use timestamps (mm:ss) for every claim.
+  return `You are a professional AoE4 match commentator narrating a replay for an audience that wants to understand WHAT HAPPENED and WHY.
+Your job is to tell the STORY of the game chronologically — not to summarize stats. Narrate the game like a caster analyzing a VOD: describe decisions, reactions, turning points, and mistakes as they unfold.
+Write 700-1000 words. Use timestamps (mm:ss) for every event.
 ${playerRefInstruction}
+
+LANGUAGE RULE (READ FIRST, HIGHEST PRIORITY): Every game entity name MUST be in English. The word "aldeano" is BANNED — write "Villager" instead. The word "Centro Urbano" is BANNED — write "Town Center" instead. Examples: "produjo 17 Villagers", "tiempo inactivo del Town Center", "mejoras del Blacksmith". The surrounding text can be in any language but entity names are ALWAYS English. This is critical for the icon system.
 
 STRUCTURE:
 ${ageSections.join('\n')}
 
-WRITING RULES:
-- Dark Age: 1-2 sentences MAX. Only mention villager count and anything unusual (early military, scout kill, etc.). Most Dark Ages are standard — say so and move on.
-- Focus your analysis on the AGE WHERE THE GAME WAS DECIDED. If the game was won in Feudal, spend 60% of your words on Feudal.
-- Every claim must reference data from the input. If you don't have data for something, don't mention it.
-- NEVER fabricate timestamps, unit counts, battles, or events not in the input data.
-- If COMBAT STATISTICS are provided, use them for precise claims: K/D ratio, combat efficiency, units killed/lost, resource value traded. These are REAL game data.
-- If COMBAT STATISTICS are NOT provided, do NOT invent specific numbers for battles. Only reference unit counts from the "Key units" and "Army comp" fields.
-- Use exact unit names and building names from the data.
-- Compare army compositions: don't just list units, explain WHY one comp beats the other (counter-unit logic).
-- Compare age-up timings against benchmarks and explain the implications.
-- The Verdict section MUST include 2-3 specific, actionable recommendations for the loser. Be concrete: name the exact unit, tech, or timing they should have chosen differently, and explain why it would have worked. Example: "Building Crossbowmen instead of more Spearmen at 8:00 would have countered the Cataphract transition."
-- If a player's strategy was detected (Rush, Boom, Fast Castle, Semi Fast Castle, Tower Rush), explain whether it was well-executed or where it broke down.
-- Use Player Scores to support your analysis — a low Macro score means villager production issues, low Military means fewer units or lost engagements.
-- Use Army Composition snapshots to track how each player's army evolved. Note critical moments where one player's comp countered the other.
-- Use Economy Summary to assess commitment: >60% military spending = aggressive, <30% = booming.
+NARRATION RULES:
+- Dark Age: 1-2 sentences MAX. Villager count, anything unusual. Most Dark Ages are standard — say so and move on.
+- For each age, tell the story CHRONOLOGICALLY: what happened first, then what happened next, how one player reacted to the other. Do NOT just list stats.
+- Describe CAUSE AND EFFECT: "The French started producing Royal Knights at 4:17. Seeing this, the Ayyubids responded with Spearmen at 5:04 to counter the cavalry pressure."
+- When a player produces a unit, explain WHY (was it a reaction to the opponent? A strategic choice? A timing push?).
+- When a unit is produced as a COUNTER to the opponent's unit, explain the counter relationship with CORRECT logic. CRITICAL COUNTER RULES:
+  * Spearmen and Lancers counter ALL cavalry (light and heavy) due to anti-cavalry bonus damage.
+  * Crossbowmen/Arbalétriers counter heavy armor units (Men-at-Arms, Knights) due to armor-piercing bonus.
+  * Heavy cavalry (Knights, Royal Knights, Mounted Samurai, Cataphracts) are powerful but are COUNTERED by Spearmen AND Crossbowmen. NEVER say heavy cavalry "is effective against infantry" or "counters Spearmen" — Spearmen COUNTER heavy cavalry, not the other way around. Heavy cavalry is effective against Archers, Villagers, and siege, but NOT against Spearmen or Crossbowmen.
+  * Archers counter light infantry (Spearmen) at range but are weak vs cavalry charges and armored units.
+  * Horsemen/light cavalry are OFFENSIVE raiding units — they excel at killing Villagers and Archers. They are NOT "defensive" units. They lose to Spearmen and heavy cavalry.
+  * NEVER claim a unit counters something it doesn't. If unsure, don't state a counter relationship.
+- Describe how combat evolved: early skirmishes, when pressure started, how fights went, who won engagements and why (counter-unit logic, numbers advantage, positioning).
+- Track the MOMENTUM of the game: who was ahead at each point? When did the lead change? Was there a decisive moment?
+- If COMBAT STATISTICS are provided, use them for precise battle descriptions: K/D ratio, combat efficiency, units killed/lost, resource value traded.
+- ECONOMIC ANALYSIS (MANDATORY in every age section and verdict):
+  * Cite SPECIFIC numbers: total resources spent per player per age (e.g. "spent 11,502 resources in Feudal vs 7,772")
+  * Military spending ratio: "invested 37% of resources in military (5,020) vs only 33% (2,262)"
+  * Villager production: "produced 61 Villagers in Feudal vs only 26" — this explains economic advantages
+  * Idle Town Center time: cite exact seconds per player (e.g. "32s idle vs 131s idle — 4x more downtime")
+  * If TOTAL RESOURCES or COMBAT STATISTICS are in the data, you MUST use them. Don't ignore available data.
+- TECHNOLOGY ANALYSIS: Cite the exact number of techs researched per player and name the key ones. Upgrades like Blacksmith techs, Ballistics, eco upgrades — all impact the flow of the game. Compare tech scores if available.
+- PLAYER SCORES: If Player Scores (0-100) are provided, reference them in the Verdict: Macro, Economy, Military, Tech scores with their reasons.
+- Use Army Composition snapshots to describe how each army EVOLVED over time. Don't just list the final army — describe the progression. Say "started producing Spearmen, building up to 28 by the end of Feudal" instead of "accumulated 28 Spearmen".
+- For the decisive age (where the game was won), spend 50-60% of your words. Describe multiple fights, key decisions, and the turning point.
+- Every claim must reference data from the input. NEVER fabricate timestamps, unit counts, battles, or events.
+- ALWAYS back up claims with SPECIFIC NUMBERS from the data: exact timestamps, unit counts, resource values, idle TC seconds, tech counts. Say "researched 12 technologies vs 5" not "researched more technologies". Say "47s of idle TC time" not "had idle TC time".
+- If COMBAT STATISTICS are NOT provided, only reference unit counts from "Key units" and "Army comp" fields.
+- Compare age-up timings against benchmarks and explain implications.
+- The Verdict MUST have three parts: (a) The specific moment/decision that decided the game. (b) Economic & tech comparison: who had better eco? who researched more upgrades? idle TC time (cite exact seconds from data)? resource efficiency? (c) 2-3 numbered recommendations for the loser with exact unit/tech/timing and a clear explanation of WHY it would have changed the outcome, referencing counter-unit logic.
+- RECOMMENDATIONS RULES:
+  * Every recommendation MUST cite specific numbers from the data (e.g. "had 47s of idle TC time" not just "had idle TC time").
+  * Only recommend units the player can ACCESS in the age they are in. Arbalétriers and Knights are Castle Age units — do NOT suggest them as "early" Feudal Age production.
+  * Explain the counter-unit logic: WHY would a specific unit have helped? What does it counter? What bonus damage does it deal?
+  * Be specific about WHEN the recommendation applies (e.g. "at 8:00 when the opponent reached Castle Age, producing Crossbowmen would have countered their Knights").
+  * NOT every recommendation should be "advance to the next age faster". In fact, if the loser already had a LARGER army than the winner, the problem was NOT aging speed — it was using that army effectively. Consider these alternatives:
+    - If the loser had military advantage: "attack during the opponent's age-up window when they invested ~1200 resources in the landmark and had minimal military"
+    - If the loser had eco advantage: "the issue was army composition, not economy — switching to counter-units would have been more impactful"
+    - If the loser was aggressive but couldn't finish: "commit harder to the push or transition to a different strategy"
+    Analyze WHAT ACTUALLY WENT WRONG before recommending. Don't default to "age up faster".
+  * Every recommendation must be justified by specific data FROM THIS MATCH. Don't give generic advice like "build a second Town Center" without explaining WHY this specific player needed it based on their economy numbers or production gaps.
 
 FORMATTING RULES:
 - Use ### headers for each section (e.g. ### Dark Age, ### Feudal Age, ### Verdict).
-- After a section header, do NOT repeat the age name at the start of the paragraph. The header already identifies the age. Jump straight into the analysis.
-- Refer to each civilization ONCE by its full name at the start, then use short forms ("the French", "the Ayyubids" — never "los franceses" after first mention).
-- When listing unit counts, use the format "Nx UnitName" (e.g. "109 Archers", "23 Royal Knights"). DO NOT use "x" separator.
-- Write short paragraphs (2-3 sentences each). Add a blank line between paragraphs.
-- The Verdict section should start with (a) why the winner won, then (b) numbered recommendations (1., 2., 3.) each on its own line.
-- CRITICAL: ALL unit, building, and technology names MUST stay in English exactly as they appear in the game data. NEVER translate them. Write "Royal Knight" not "Caballero Real". Write "Spearman" not "Lancero". Write "Archery Range" not "Campo de Tiro". Write "Town Center" not "Centro Urbano". The surrounding text can be in any language, but game entity names MUST be in English. This is mandatory for the icon system to work.${ageConstraint}
+- After a section header, do NOT repeat the age name at the start of the paragraph.
+- Write short paragraphs (2-4 sentences each). Add a blank line between paragraphs. NEVER write a wall of text.
+- The Verdict section: (a) why the winner won, then (b) numbered recommendations (1., 2., 3.) each on its own line.
+- ABSOLUTE RULE — ZERO EXCEPTIONS: ALL unit, building, technology, and landmark names MUST be written in English exactly as they appear in the game data. NEVER translate them to any language. The surrounding prose can be in any language, but every game entity name MUST be in English. This is mandatory for the icon rendering system — any translated name will appear as plain text without its icon.
+  Examples of CORRECT usage (even when writing in Spanish):
+  "los franceses produjeron Royal Knights" NOT "produjeron Caballeros Reales"
+  "construyeron un School of Cavalry" NOT "Escuela de Caballería"
+  "investigaron Double Broadax" NOT "Doble Hacha"
+  "eligieron el Floating Gate" NOT "Portal Flotante"
+  "entrenaron Mounted Samurai" NOT "Samuráis Montados"
+  "producción de Spearmen" NOT "lanceros"
+  "mejoras del Royal Institute" NOT "Instituto Real"
+  "produjeron Yumi Ashigaru" NOT "arqueros Yumi"
+  "Town Center inactivo" NOT "Centro Urbano inactivo"
+  "produjo 17 Villagers" NOT "17 aldeanos"
+  "mejoras del Blacksmith" NOT "herrería"
+  MOST COMMONLY MISTRANSLATED — memorize these:
+  Villager (NOT aldeano/aldeanos), Town Center (NOT Centro Urbano), Blacksmith (NOT herrería), Barracks (NOT cuartel), Stable (NOT establo), Archery Range (NOT campo de tiro), Market (NOT mercado), Keep (NOT castillo), Monastery (NOT monasterio), University (NOT universidad), Siege Workshop (NOT taller de asedio).
+  This applies to ALL entities: units, buildings, landmarks, technologies, upgrades. NO EXCEPTIONS.${ageConstraint}
 
 KNOWLEDGE BASE:
 ${COUNTER_UNIT_MATRIX}
@@ -714,8 +755,8 @@ export async function generateMatchNarrative(
         { role: 'system', content: systemPrompt },
         { role: 'user', content: `Analyze this AoE4 match:\n\n${userPrompt}` },
       ],
-      temperature: 0.5,
-      max_tokens: 1200,
+      temperature: 0.6,
+      max_tokens: 2500,
     });
 
     let narrative = response.choices[0]?.message?.content ?? null;
