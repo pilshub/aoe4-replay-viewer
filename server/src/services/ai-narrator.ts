@@ -750,15 +750,15 @@ export async function generateMatchNarrative(
 
   try {
     const response = await client.chat.completions.create({
-      model: 'gpt-4o',
+      model: 'gpt-5-mini',
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: `Analyze this AoE4 match:\n\n${userPrompt}` },
       ],
-      temperature: 0.6,
-      max_tokens: 2500,
+      max_completion_tokens: 16000,
     });
 
+    console.log(`[ai-narrator] Response: finish_reason=${response.choices[0]?.finish_reason}, content_len=${response.choices[0]?.message?.content?.length ?? 0}`);
     let narrative = response.choices[0]?.message?.content ?? null;
     if (narrative) {
       console.log(`[ai-narrator] Narrative generated (${narrative.length} chars)`);
