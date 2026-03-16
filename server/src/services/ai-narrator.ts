@@ -1,3 +1,4 @@
+// Using OpenRouter API (OpenAI-compatible) instead of direct OpenAI
 import OpenAI from 'openai';
 import type { MatchAnalysisReport } from './match-analyzer';
 import type { PlayerAnalysis } from './strategy-analyzer';
@@ -729,13 +730,20 @@ export async function generateMatchNarrative(
   language: string = 'en',
   summaryData: ReplaySummaryData | null = null,
 ): Promise<string | null> {
-  const apiKey = process.env.OPENAI_API_KEY;
+  const apiKey = process.env.OPENROUTER_API_KEY || process.env.OPENAI_API_KEY;
   if (!apiKey) {
-    console.log('[ai-narrator] No OPENAI_API_KEY set, skipping narrative generation');
+    console.log('[ai-narrator] No OPENROUTER_API_KEY set, skipping narrative generation');
     return null;
   }
 
-  const client = new OpenAI({ apiKey });
+  const client = new OpenAI({
+    apiKey,
+    baseURL: 'https://openrouter.ai/api/v1',
+    defaultHeaders: {
+      'HTTP-Referer': 'https://aoe4academix.com',
+      'X-Title': 'Academix Replay Analyzer',
+    },
+  });
   const userPrompt = buildPrompt(report, playerAnalyses, players, duration, mapName, summaryData);
 
   // Determine max age reached from age phases
@@ -750,12 +758,12 @@ export async function generateMatchNarrative(
 
   try {
     const response = await client.chat.completions.create({
-      model: 'gpt-5-mini',
+      model: 'google/gemini-2.0-flash-001',
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: `Analyze this AoE4 match:\n\n${userPrompt}` },
       ],
-      max_completion_tokens: 16000,
+      max_tokens: 4000,
     });
 
     console.log(`[ai-narrator] Response: finish_reason=${response.choices[0]?.finish_reason}, content_len=${response.choices[0]?.message?.content?.length ?? 0}`);
