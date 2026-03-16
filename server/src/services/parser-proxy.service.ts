@@ -126,24 +126,29 @@ function enrichWithMetadata(parsed: ParsedReplay, metadata: any): ParsedReplay {
  */
 function buildFromSummary(metadata: any): any {
   const players = (metadata.players || []).map((p: any, i: number) => ({
-    playerName: p.player?.name || p.name || `Player ${i + 1}`,
-    civ: p.civilization || 'unknown',
-    outcome: p.result || 'unknown',
+    playerName: p.name || p.player?.name || `Player ${i + 1}`,
+    civ: p.civilization || p.civ || 'unknown',
+    outcome: p.result || p.outcome || 'unknown',
     playerColor: i,
     team: p.team ?? i,
-    profileId: p.player?.profile_id || p.profile_id || 0,
-    rating: p.player?.rating || p.rating || 0,
+    profileId: p.profile_id || p.player?.profile_id || 0,
+    rating: p.rating || p.player?.rating || 0,
     civFlag: '',
   }));
 
   const playerScores = (metadata.players || []).map((p: any) => {
-    const s = p.scores || {};
+    const s = p._stats || p.scores || {};
     return {
-      total: s.total || 0,
-      military: s.military || 0,
-      economy: s.economy || 0,
-      technology: s.technology || 0,
-      society: s.society || 0,
+      total: (s.ekills || 0) + (s.sqprod || 0),
+      military: s.ekills || s.military || 0,
+      economy: s.sqprod || s.economy || 0,
+      technology: s.elitekill || s.technology || 0,
+      society: s.abil || s.society || 0,
+      // Raw stats for narrative
+      unitsKilled: s.sqkill || s.ekills || 0,
+      unitsLost: s.sqlost || s.edeaths || 0,
+      unitsProduced: s.sqprod || 0,
+      apm: p.apm || 0,
     };
   });
 
