@@ -122,7 +122,52 @@ function enrichWithMetadata(parsed: ParsedReplay, metadata: any): ParsedReplay {
 }
 
 /**
+ * Build a minimal ParsedReplay from summary.json when binary replay is unavailable.
+ */
+function buildFromSummary(metadata: any): any {
+  const players = (metadata.players || []).map((p: any, i: number) => ({
+    playerName: p.player?.name || p.name || `Player ${i + 1}`,
+    civ: p.civilization || 'unknown',
+    outcome: p.result || 'unknown',
+    playerColor: i,
+    team: p.team ?? i,
+    profileId: p.player?.profile_id || p.profile_id || 0,
+    rating: p.player?.rating || p.rating || 0,
+    civFlag: '',
+  }));
+
+  const playerScores = (metadata.players || []).map((p: any) => {
+    const s = p.scores || {};
+    return {
+      total: s.total || 0,
+      military: s.military || 0,
+      economy: s.economy || 0,
+      technology: s.technology || 0,
+      society: s.society || 0,
+    };
+  });
+
+  return {
+    gameSummary: {
+      mapName: metadata.map_name || metadata.map || 'Unknown',
+      duration: metadata.duration || 0,
+      players,
+      winReason: metadata.win_reason || 'Unknown',
+    },
+    replaySummary: {
+      dataSTLS: { gameLength: metadata.duration || 0 },
+      playerScores,
+    },
+    entities: [],
+    events: [],
+    buildOrders: players.map(() => []),
+    summaryOnly: true,
+  };
+}
+
+/**
  * Parse a replay from an aoe4world.com URL.
+ * Tries binary replay first; falls back to summary.json-only.
  */
 export async function parseReplay(replayUrl: string): Promise<any> {
   const gameId = extractGameId(replayUrl);
@@ -132,18 +177,26 @@ export async function parseReplay(replayUrl: string): Promise<any> {
 
   console.log(`[parser-proxy] Game ID: ${gameId}`);
 
-  // Download replay and fetch metadata in parallel
-  const [replayBuffer, metadata] = await Promise.all([
-    downloadReplay(gameId),
-    fetchMetadata(replayUrl),
-  ]);
+  // Always fetch metadata from aoe4world
+  const metadata = await fetchMetadata(replayUrl);
 
-  // Parse the replay binary
-  const parsed = parseReplayBuffer(replayBuffer);
+  // Try binary replay first
+  try {
+    const replayBuffer = await downloadReplay(gameId);
+    const parsed = parseReplayBuffer(replayBuffer);
+    const enriched = enrichWithMetadata(parsed, metadata);
+    console.log(`[parser-proxy] Full parse: ${enriched.gameSummary.players.length} players, map=${enriched.gameSummary.mapName}`);
+    return enriched;
+  } catch (err: any) {
+    console.log(`[parser-proxy] Binary replay unavailable (${err.message}), falling back to summary.json`);
+  }
 
-  // Enrich with metadata (player names, civs, map)
-  const enriched = enrichWithMetadata(parsed, metadata);
+  // Fallback: summary.json only
+  if (!metadata) {
+    throw new Error('Neither replay binary nor summary.json available for this game');
+  }
 
-  console.log(`[parser-proxy] Done: ${enriched.gameSummary.players.length} players, map=${enriched.gameSummary.mapName}`);
-  return enriched;
+  const parsed = buildFromSummary(metadata);
+  console.log(`[parser-proxy] Summary-only: ${parsed.gameSummary.players.length} players, map=${parsed.gameSummary.mapName}`);
+  return parsed;
 }
